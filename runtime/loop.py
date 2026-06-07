@@ -71,6 +71,12 @@ TOOL USAGE — use the RIGHT tool for each job:
 IMPORTANT: sandbox_exec runs in an isolated directory. NEVER use it for tasks that create files.
 Always use Write + Bash for file creation and execution.
 
+PATCH QUALITY RULES:
+- Use Edit for small, targeted changes. Each Edit should change only the necessary lines.
+- Do NOT use Write to overwrite an entire file when only a few lines changed — use Edit instead.
+- If you need to modify multiple files, do them one at a time. Do not batch more than 3 file edits in a single iteration.
+- Keep changes minimal and focused. Do not refactor unrelated code when fixing a bug.
+
 WORKFLOW:
 1. Read files to understand current state
 2. Write or Edit to make changes
@@ -119,6 +125,17 @@ class LoopConfig:
     workspace: str = ""  # Working directory for file operations
     # Proxy settings — only applied per CodexLoop instance, not globally at import
     clear_proxy_env: bool = True  # Unset proxy env vars during loop execution
+    # Context management
+    max_context_tokens: int = 8000  # Max tokens in context window (1 token ≈ 4 chars)
+    # Token budget control
+    max_total_tokens: int = 50000  # Total token budget for a single run_task()
+    # Security sandbox settings
+    allowed_commands: List[str] = field(default_factory=list)  # if non-empty, only these are allowed
+    blocked_commands: List[str] = field(default_factory=lambda: [
+        "rm -rf /", "rm -rf /*", "format", "shutdown", "regedit",
+        "mkfs", "dd if=", ":(){:|:&};:", "> /dev/sda",
+    ])
+    require_confirmation: bool = True  # require user confirmation for dangerous commands
 
 
 # ─── LLM Interface ───────────────────────────────────────────────────────
@@ -148,9 +165,29 @@ def _convert_tools_to_openai_format(tools: List[Dict]) -> List[Dict]:
     return converted
 
 
-MAX_MESSAGES_CHARS = 80_000  # ~20k tokens — keep request body under ~100KB
+MAX_MESSAGES_CHARS = 80_000  # ~20k tokens -- keep request body under ~100KB
 
-def _build_messages(task: str, history: List[Dict], system_prompt: str) -> List[Dict]:
+
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count: ~1 token per 4 characters."""
+    return len(text) // 4 + 1
+
+
+def _msg_char_len(msg: Dict) -> int:
+    """Get the serialized char length of a message."""
+    return len(json.dumps(msg, ensure_ascii=False))
+
+
+def _build_messages(task: str, history: List[Dict], system_prompt: str,
+                    max_context_tokens: int = 0) -> List[Dict]:
+    """Build message list with token-aware context window management.
+
+    Args:
+        task: Current user task
+        history: Previous message history
+        system_prompt: System prompt
+        max_context_tokens: Max context tokens (0 = use legacy char-based limit)
+    """
     # Build full messages first
     full_messages = []
     for msg in history:
@@ -163,30 +200,50 @@ def _build_messages(task: str, history: List[Dict], system_prompt: str) -> List[
         full_messages.append(m)
     full_messages.append({"role": "user", "content": task})
 
-    # Estimate total size
-    total_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in full_messages)
+    system_msg = {"role": "system", "content": system_prompt}
 
-    if total_chars <= MAX_MESSAGES_CHARS:
-        return [{"role": "system", "content": system_prompt}] + full_messages
+    if max_context_tokens > 0:
+        # Token-based context management: 1 token approx 4 chars
+        max_chars = max_context_tokens * 4
+        total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in full_messages)
 
-    # Truncate oldest messages while preserving tool-call pairing integrity.
-    # Strategy: keep system + most recent messages that fit.
-    # We remove from the front, but always remove assistant+tool pairs together.
-    recent = list(full_messages)  # copy
-    while recent and total_chars > MAX_MESSAGES_CHARS:
-        removed = recent.pop(0)
-        # If we removed an assistant msg with tool_calls, also remove the following tool result(s)
-        if removed.get("role") == "assistant" and removed.get("tool_calls"):
-            while recent and recent[0].get("role") == "tool":
-                recent.pop(0)
-        # Recalculate
-        total_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in recent)
+        if total_chars <= max_chars:
+            return [system_msg] + full_messages
 
-    # Final safety: drop orphaned tool results at the front
-    while recent and recent[0].get("role") == "tool":
-        recent.pop(0)
+        # Truncate oldest messages while preserving tool-call pairing
+        recent = list(full_messages)
+        while recent and total_chars > max_chars:
+            removed = recent.pop(0)
+            # If removed assistant msg with tool_calls, also remove following tool results
+            if removed.get("role") == "assistant" and removed.get("tool_calls"):
+                while recent and recent[0].get("role") == "tool":
+                    recent.pop(0)
+            total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in recent)
 
-    return [{"role": "system", "content": system_prompt}] + recent
+        # Drop orphaned tool results at the front
+        while recent and recent[0].get("role") == "tool":
+            recent.pop(0)
+
+        return [system_msg] + recent
+    else:
+        # Legacy char-based limit
+        total_chars = sum(_msg_char_len(m) for m in full_messages)
+
+        if total_chars <= MAX_MESSAGES_CHARS:
+            return [system_msg] + full_messages
+
+        recent = list(full_messages)
+        while recent and total_chars > MAX_MESSAGES_CHARS:
+            removed = recent.pop(0)
+            if removed.get("role") == "assistant" and removed.get("tool_calls"):
+                while recent and recent[0].get("role") == "tool":
+                    recent.pop(0)
+            total_chars = sum(_msg_char_len(m) for m in recent)
+
+        while recent and recent[0].get("role") == "tool":
+            recent.pop(0)
+
+        return [system_msg] + recent
 
 
 def _resolve_api_url(provider: str = "") -> str:
@@ -477,6 +534,50 @@ class DecisionEngine:
         self.executor = executor
         self.config = config
 
+    def _check_command_safety(self, command: str) -> Dict[str, Any]:
+        """Check if a bash command is safe to execute.
+
+        Returns:
+            {"allowed": bool, "reason": str, "requires_confirmation": bool}
+        """
+        cmd_lower = command.strip().lower()
+
+        # Check allowlist first (if non-empty, only these are allowed)
+        if self.config.allowed_commands:
+            if not any(cmd_lower.startswith(ac.lower()) for ac in self.config.allowed_commands):
+                return {
+                    "allowed": False,
+                    "reason": f"Command not in allowlist: {command[:80]}",
+                    "requires_confirmation": False,
+                }
+
+        # Check blocklist
+        for blocked in self.config.blocked_commands:
+            if blocked.lower() in cmd_lower:
+                return {
+                    "allowed": False,
+                    "reason": f"Dangerous command blocked: matches pattern '{blocked}'",
+                    "requires_confirmation": True,
+                }
+
+        # Check for inherently dangerous patterns
+        dangerous_patterns = [
+            "rm -rf", "rmdir /s", "del /f /s /q",
+            "> /dev/", "mkfs", "fdisk",
+            "chmod 777", "chown root",
+            "curl | bash", "wget | bash", "curl|bash", "wget|bash",
+            "eval(", "exec(",
+        ]
+        for pattern in dangerous_patterns:
+            if pattern in cmd_lower:
+                return {
+                    "allowed": False,
+                    "reason": f"Potentially dangerous command: contains '{pattern}'",
+                    "requires_confirmation": True,
+                }
+
+        return {"allowed": True, "reason": "Command passed safety check", "requires_confirmation": False}
+
     def decide(self, output_items: List[Dict]) -> Action:
         if not output_items:
             return Action(
@@ -574,6 +675,19 @@ class DecisionEngine:
                     "error": "Shell commands require confirmation (set trust_shell_commands=True)",
                     "blocked": True,
                 }
+
+            # Security sandbox: check bash commands against blocklist/allowlist
+            if tool_name.lower() in ("bash", "shell"):
+                command = tool_args.get("command", "") if isinstance(tool_args, dict) else ""
+                if command:
+                    sandbox_result = self._check_command_safety(command)
+                    if not sandbox_result["allowed"]:
+                        return {
+                            "success": False,
+                            "error": sandbox_result["reason"],
+                            "blocked": True,
+                            "requires_confirmation": sandbox_result.get("requires_confirmation", False),
+                        }
 
             result = self.executor.execute_tool(tool_name, tool_args)
             return result
@@ -692,7 +806,8 @@ class CodexLoop:
             if memory_context:
                 system_prompt = f"{system_prompt}\n\n{memory_context}"
 
-        messages = _build_messages(task, [], system_prompt)
+        messages = _build_messages(task, [], system_prompt,
+                                     max_context_tokens=self.config.max_context_tokens)
         message_history: List[Dict] = []
         total_input_tokens = 0
         total_output_tokens = 0
@@ -753,31 +868,27 @@ class CodexLoop:
                 message_history.append(assistant_msg)
 
                 # Enforce context window limit: truncate oldest messages when exceeding threshold
-                # Keep system prompt + most recent messages to stay within MAX_MESSAGES_CHARS
                 if len(messages) > 2:  # At least system + 1 message
-                    total_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in messages)
-                    if total_chars > MAX_MESSAGES_CHARS:
-                        # Strategy: keep system prompt + last N messages that fit
+                    if self.config.max_context_tokens > 0:
+                        max_chars = self.config.max_context_tokens * 4
+                    else:
+                        max_chars = MAX_MESSAGES_CHARS
+                    total_chars = sum(_msg_char_len(m) for m in messages)
+                    if total_chars > max_chars:
                         system_msg = messages[0]
-                        recent_msgs = messages[1:]  # everything after system
-                        # Keep removing oldest until we fit, but always remove paired messages together
-                        # to avoid orphaned tool results (tool msg without preceding assistant tool_calls)
-                        while recent_msgs and total_chars > MAX_MESSAGES_CHARS:
+                        recent_msgs = messages[1:]
+                        while recent_msgs and total_chars > max_chars:
                             removed = recent_msgs.pop(0)
-                            # If we just removed an assistant msg with tool_calls,
-                            # also remove the following tool result msg to keep pairing intact
                             if removed.get("role") == "assistant" and removed.get("tool_calls"):
                                 if recent_msgs and recent_msgs[0].get("role") == "tool":
                                     recent_msgs.pop(0)
-                            # Recalculate after removal
-                            total_chars = len(json.dumps(system_msg, ensure_ascii=False)) + \
-                                sum(len(json.dumps(m, ensure_ascii=False)) for m in recent_msgs)
+                            total_chars = _msg_char_len(system_msg) + \
+                                sum(_msg_char_len(m) for m in recent_msgs)
 
-                        # Final safety: if first msg after system is an orphaned tool result, drop it
                         while recent_msgs and recent_msgs[0].get("role") == "tool":
                             recent_msgs.pop(0)
-                            total_chars = len(json.dumps(system_msg, ensure_ascii=False)) + \
-                                sum(len(json.dumps(m, ensure_ascii=False)) for m in recent_msgs)
+                            total_chars = _msg_char_len(system_msg) + \
+                                sum(_msg_char_len(m) for m in recent_msgs)
 
                         messages = [system_msg] + recent_msgs
 
