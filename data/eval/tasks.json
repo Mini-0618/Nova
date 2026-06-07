@@ -1,0 +1,518 @@
+[
+  {
+    "id": "E01",
+    "category": "file_io",
+    "difficulty": "easy",
+    "title": "Create a file with content",
+    "task": "Create a file called data/eval/workspace/E01_output.txt containing the text 'Hello from Codex-Local'",
+    "verify_file": "data/eval/workspace/E01_output.txt",
+    "verify_contains": "Hello from Codex-Local",
+    "expected_tools": ["file_write"]
+  },
+  {
+    "id": "E02",
+    "category": "file_io",
+    "difficulty": "easy",
+    "title": "Read and count lines",
+    "task": "Read the file data/eval/fixtures/lines.txt and tell me how many lines it has. Write the count to data/eval/workspace/E02_count.txt",
+    "verify_file": "data/eval/workspace/E02_count.txt",
+    "verify_contains": "5",
+    "expected_tools": ["file_read", "file_write"]
+  },
+  {
+    "id": "E03",
+    "category": "file_io",
+    "difficulty": "easy",
+    "title": "Copy with modification",
+    "task": "Read data/eval/fixtures/sample.py, change all occurrences of 'old_func' to 'new_func', and write the result to data/eval/workspace/E03_modified.py",
+    "verify_file": "data/eval/workspace/E03_modified.py",
+    "verify_contains": "new_func",
+    "verify_not_contains": "old_func",
+    "expected_tools": ["file_read", "file_write"]
+  },
+  {
+    "id": "E04",
+    "category": "file_io",
+    "difficulty": "medium",
+    "title": "List and filter files",
+    "task": "List all .py files in data/eval/fixtures/ and write their names (one per line) to data/eval/workspace/E04_pylist.txt",
+    "verify_file": "data/eval/workspace/E04_pylist.txt",
+    "verify_contains": "sample.py",
+    "expected_tools": ["glob", "file_write"]
+  },
+  {
+    "id": "E05",
+    "category": "file_io",
+    "difficulty": "medium",
+    "title": "Merge multiple files",
+    "task": "Read data/eval/fixtures/a.txt and data/eval/fixtures/b.txt, concatenate them with a newline between, and write to data/eval/workspace/E05_merged.txt",
+    "verify_file": "data/eval/workspace/E05_merged.txt",
+    "verify_min_lines": 2,
+    "expected_tools": ["file_read", "file_write"]
+  },
+  {
+    "id": "E06",
+    "category": "file_io",
+    "difficulty": "easy",
+    "title": "Create directory structure",
+    "task": "Create the directory structure data/eval/workspace/E06_dir/sub1/sub2/ and put a file marker.txt in sub2 containing 'deep'",
+    "verify_file": "data/eval/workspace/E06_dir/sub1/sub2/marker.txt",
+    "verify_contains": "deep",
+    "expected_tools": ["bash", "file_write"]
+  },
+  {
+    "id": "E07",
+    "category": "file_io",
+    "difficulty": "medium",
+    "title": "JSON processing",
+    "task": "Read data/eval/fixtures/config.json, add a new key 'version' with value '2.0', and write the result to data/eval/workspace/E07_config.json",
+    "verify_file": "data/eval/workspace/E07_config.json",
+    "verify_contains": "2.0",
+    "expected_tools": ["file_read", "file_write"]
+  },
+  {
+    "id": "E08",
+    "category": "file_io",
+    "difficulty": "medium",
+    "title": "Search and replace across files",
+    "task": "Find all files in data/eval/workspace/ that contain the word 'ERROR' and replace it with 'FIXED' in-place",
+    "setup_files": {"data/eval/workspace/E08_target.txt": "line1\nERROR here\nline3"},
+    "verify_file": "data/eval/workspace/E08_target.txt",
+    "verify_contains": "FIXED",
+    "verify_not_contains": "ERROR",
+    "expected_tools": ["grep", "file_write"]
+  },
+  {
+    "id": "E09",
+    "category": "file_io",
+    "difficulty": "hard",
+    "title": "Generate a formatted report",
+    "task": "Read data/eval/fixtures/sales.csv and generate a summary report at data/eval/workspace/E09_report.txt with: total rows, sum of column 'amount', and the row with the highest amount",
+    "verify_file": "data/eval/workspace/E09_report.txt",
+    "verify_min_length": 20,
+    "expected_tools": ["file_read", "file_write"]
+  },
+  {
+    "id": "E10",
+    "category": "file_io",
+    "difficulty": "easy",
+    "title": "Append to existing file",
+    "task": "Append the line 'NEW LINE' to the file data/eval/workspace/E10_append.txt (create it if it doesn't exist)",
+    "setup_files": {"data/eval/workspace/E10_append.txt": "existing content"},
+    "verify_file": "data/eval/workspace/E10_append.txt",
+    "verify_contains": "NEW LINE",
+    "expected_tools": ["file_read", "file_write"]
+  },
+  {
+    "id": "E11",
+    "category": "bugfix",
+    "difficulty": "easy",
+    "title": "Fix off-by-one error",
+    "task": "The file data/eval/workspace/E11_buggy.py has an off-by-one error in the range() call. Fix it so that sum_range(1, 5) returns 10 (1+2+3+4). Run the test to verify.",
+    "setup_files": {"data/eval/workspace/E11_buggy.py": "def sum_range(a, b):\n    total = 0\n    for i in range(a, b+1):  # BUG: should be range(a, b)\n        total += i\n    return total\n\nif __name__ == '__main__':\n    assert sum_range(1, 5) == 10, f'Expected 10, got {sum_range(1, 5)}'\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E11_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E12",
+    "category": "bugfix",
+    "difficulty": "easy",
+    "title": "Fix string comparison",
+    "task": "Fix data/eval/workspace/E12_buggy.py so that check_password('admin123') returns True. The bug is in the string comparison.",
+    "setup_files": {"data/eval/workspace/E12_buggy.py": "def check_password(pwd):\n    return pwd == 'Admin123'  # BUG: case mismatch\n\nif __name__ == '__main__':\n    assert check_password('admin123') == True, 'Should accept admin123'\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E12_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E13",
+    "category": "bugfix",
+    "difficulty": "medium",
+    "title": "Fix division by zero",
+    "task": "Fix data/eval/workspace/E13_buggy.py to handle empty list input without crashing. avg([]) should return 0.",
+    "setup_files": {"data/eval/workspace/E13_buggy.py": "def avg(nums):\n    return sum(nums) / len(nums)  # BUG: ZeroDivisionError on empty list\n\nif __name__ == '__main__':\n    assert avg([1, 2, 3]) == 2.0\n    assert avg([]) == 0, 'Empty list should return 0'\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E13_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E14",
+    "category": "bugfix",
+    "difficulty": "medium",
+    "title": "Fix dict key error",
+    "task": "Fix data/eval/workspace/E14_buggy.py so get_user_age works even when the key doesn't exist. Missing keys should return -1.",
+    "setup_files": {"data/eval/workspace/E14_buggy.py": "users = {'alice': 30, 'bob': 25}\n\ndef get_user_age(name):\n    return users[name]  # BUG: KeyError if name not found\n\nif __name__ == '__main__':\n    assert get_user_age('alice') == 30\n    assert get_user_age('unknown') == -1\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E14_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E15",
+    "category": "bugfix",
+    "difficulty": "medium",
+    "title": "Fix infinite loop",
+    "task": "Fix data/eval/workspace/E15_buggy.py — it has an infinite loop. count_down(3) should print 3, 2, 1 and return.",
+    "setup_files": {"data/eval/workspace/E15_buggy.py": "def count_down(n):\n    while n > 0:\n        print(n)\n        n += 1  # BUG: should be n -= 1\n\nif __name__ == '__main__':\n    count_down(3)\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E15_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E16",
+    "category": "bugfix",
+    "difficulty": "hard",
+    "title": "Fix mutable default argument",
+    "task": "Fix data/eval/workspace/E16_buggy.py — add_item shares state between calls due to mutable default argument.",
+    "setup_files": {"data/eval/workspace/E16_buggy.py": "def add_item(item, lst=[]):  # BUG: mutable default\n    lst.append(item)\n    return lst\n\nif __name__ == '__main__':\n    r1 = add_item('a')\n    r2 = add_item('b')\n    assert r2 == ['b'], f'Expected [\"b\"], got {r2}'\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E16_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E17",
+    "category": "bugfix",
+    "difficulty": "medium",
+    "title": "Fix encoding issue",
+    "task": "Fix data/eval/workspace/E17_buggy.py so it can read files with Chinese characters. Write the fix and verify with the test fixture.",
+    "setup_files": {"data/eval/workspace/E17_buggy.py": "def read_file(path):\n    with open(path, 'r') as f:  # BUG: no encoding specified\n        return f.read()\n\nif __name__ == '__main__':\n    content = read_file('data/eval/fixtures/chinese.txt')\n    assert '你好' in content, f'Expected Chinese chars, got: {content}'\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E17_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E18",
+    "category": "bugfix",
+    "difficulty": "hard",
+    "title": "Fix race condition in counter",
+    "task": "Fix data/eval/workspace/E18_buggy.py — the increment_counter function is not thread-safe. Make it safe for concurrent use.",
+    "setup_files": {"data/eval/workspace/E18_buggy.py": "import threading\n\ncounter = 0\n\ndef increment_counter():\n    global counter\n    temp = counter  # BUG: race condition\n    temp += 1\n    counter = temp\n\nif __name__ == '__main__':\n    threads = [threading.Thread(target=increment_counter) for _ in range(100)]\n    for t in threads: t.start()\n    for t in threads: t.join()\n    assert counter == 100, f'Expected 100, got {counter}'\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E18_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E19",
+    "category": "bugfix",
+    "difficulty": "medium",
+    "title": "Fix incorrect sorting",
+    "task": "Fix data/eval/workspace/E19_buggy.py — sort_by_age should sort people by age ascending but currently doesn't work.",
+    "setup_files": {"data/eval/workspace/E19_buggy.py": "people = [{'name': 'alice', 'age': 30}, {'name': 'bob', 'age': 20}, {'name': 'carol', 'age': 25}]\n\ndef sort_by_age(ppl):\n    return sorted(ppl, key=lambda p: p['name'])  # BUG: sorts by name not age\n\nif __name__ == '__main__':\n    result = sort_by_age(people)\n    assert result[0]['name'] == 'bob', f'Youngest first should be bob, got {result[0][\"name\"]}'\n    assert result[-1]['name'] == 'alice', f'Oldest last should be alice, got {result[-1][\"name\"]}'\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E19_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E20",
+    "category": "bugfix",
+    "difficulty": "hard",
+    "title": "Fix silent data loss",
+    "task": "Fix data/eval/workspace/E20_buggy.py — save_users silently loses data when the write fails partway. It should be atomic (write to temp then rename).",
+    "setup_files": {"data/eval/workspace/E20_buggy.py": "import json, os\n\ndef save_users(users, path):\n    with open(path, 'w') as f:  # BUG: not atomic, partial write on crash\n        json.dump(users, f)\n\nif __name__ == '__main__':\n    users = [{'name': 'alice'}, {'name': 'bob'}]\n    path = 'data/eval/workspace/E20_users.json'\n    save_users(users, path)\n    with open(path) as f:\n        loaded = json.load(f)\n    assert len(loaded) == 2, f'Expected 2 users, got {len(loaded)}'\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E20_buggy.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E21",
+    "category": "cli",
+    "difficulty": "easy",
+    "title": "Run a CLI command and capture output",
+    "task": "Run 'python --version' and save the output to data/eval/workspace/E21_version.txt",
+    "verify_file": "data/eval/workspace/E21_version.txt",
+    "verify_contains": "Python",
+    "expected_tools": ["bash", "file_write"]
+  },
+  {
+    "id": "E22",
+    "category": "cli",
+    "difficulty": "medium",
+    "title": "Build a simple argument parser",
+    "task": "Create data/eval/workspace/E22_greet.py that accepts --name argument and prints 'Hello, {name}'. Test it with: python data/eval/workspace/E22_greet.py --name World",
+    "verify_test": "python data/eval/workspace/E22_greet.py --name World",
+    "verify_output_contains": "Hello, World",
+    "expected_tools": ["file_write", "bash"]
+  },
+  {
+    "id": "E23",
+    "category": "cli",
+    "difficulty": "medium",
+    "title": "Pipe processing",
+    "task": "Create a Python script data/eval/workspace/E23_filter.py that reads stdin and prints only lines containing 'ERROR'. Test: echo -e 'INFO ok\\nERROR bad\\nINFO fine' | python data/eval/workspace/E23_filter.py",
+    "verify_test": "python -c \"import subprocess; r=subprocess.run(['python','data/eval/workspace/E23_filter.py'],input='INFO ok\\nERROR bad\\nINFO fine',capture_output=True,text=True); assert 'ERROR' in r.stdout, f'Expected ERROR in output: {r.stdout}'; print('PASS')\"",
+    "verify_output_contains": "ERROR",
+    "expected_tools": ["file_write", "bash"]
+  },
+  {
+    "id": "E24",
+    "category": "cli",
+    "difficulty": "hard",
+    "title": "Subprocess with timeout",
+    "task": "Create data/eval/workspace/E24_timeout.py that runs a subprocess with a 2-second timeout. If it exceeds, print 'TIMEOUT'. Test with: python -c 'import time; time.sleep(10)'",
+    "verify_file": "data/eval/workspace/E24_timeout.py",
+    "verify_min_length": 50,
+    "expected_tools": ["file_write"]
+  },
+  {
+    "id": "E25",
+    "category": "cli",
+    "difficulty": "easy",
+    "title": "Check exit code",
+    "task": "Run 'python -c \"import sys; sys.exit(42)\"' and capture the exit code. Write just the number to data/eval/workspace/E25_exitcode.txt",
+    "verify_file": "data/eval/workspace/E25_exitcode.txt",
+    "verify_contains": "42",
+    "expected_tools": ["bash", "file_write"]
+  },
+  {
+    "id": "E26",
+    "category": "refactor",
+    "difficulty": "medium",
+    "title": "Extract function",
+    "task": "Read data/eval/workspace/E26_long.py and extract the repeated 'validate_email' logic into a separate function. Keep the same behavior.",
+    "setup_files": {"data/eval/workspace/E26_long.py": "def register_user(email, name):\n    if '@' not in email or '.' not in email:\n        return 'invalid email'\n    return f'Registered {name} with {email}'\n\ndef update_email(old_email, new_email):\n    if '@' not in new_email or '.' not in new_email:\n        return 'invalid email'\n    return f'Updated from {old_email} to {new_email}'"},
+    "verify_test": "python -c \"import sys; sys.path.insert(0,'data/eval/workspace'); from E26_long import register_user, update_email; assert register_user('a@b.c','test') == 'Registered test with a@b.c'; assert update_email('a@b.c','d@e.f') == 'Updated from a@b.c to d@e.f'; print('PASS')\"",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E27",
+    "category": "refactor",
+    "difficulty": "medium",
+    "title": "Add type hints",
+    "task": "Add type hints to all functions in data/eval/workspace/E27_untyped.py. The code must still pass the existing test.",
+    "setup_files": {"data/eval/workspace/E27_untyped.py": "def add(a, b):\n    return a + b\n\ndef greet(name):\n    return f'Hello, {name}'\n\ndef is_even(n):\n    return n % 2 == 0\n\nif __name__ == '__main__':\n    assert add(1, 2) == 3\n    assert greet('World') == 'Hello, World'\n    assert is_even(4) == True\n    assert is_even(3) == False\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E27_untyped.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E28",
+    "category": "refactor",
+    "difficulty": "hard",
+    "title": "Convert to class",
+    "task": "Refactor data/eval/workspace/E28_funcs.py from standalone functions into a Counter class. All existing tests must pass.",
+    "setup_files": {"data/eval/workspace/E28_funcs.py": "count = 0\n\ndef increment():\n    global count\n    count += 1\n\ndef decrement():\n    global count\n    count -= 1\n\ndef get_count():\n    return count\n\ndef reset():\n    global count\n    count = 0\n\nif __name__ == '__main__':\n    reset()\n    increment()\n    increment()\n    assert get_count() == 2\n    decrement()\n    assert get_count() == 1\n    reset()\n    assert get_count() == 0\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E28_funcs.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E29",
+    "category": "refactor",
+    "difficulty": "medium",
+    "title": "Replace magic numbers",
+    "task": "Refactor data/eval/workspace/E29_magic.py to replace all magic numbers with named constants. Behavior must not change.",
+    "setup_files": {"data/eval/workspace/E29_magic.py": "def calculate_price(quantity, unit_price):\n    if quantity > 100:  # magic number\n        discount = 0.1\n    elif quantity > 50:  # magic number\n        discount = 0.05\n    else:\n        discount = 0\n    total = quantity * unit_price * (1 - discount)\n    if total > 500:  # magic number\n        total -= 25  # magic number\n    return total\n\nif __name__ == '__main__':\n    assert calculate_price(10, 10) == 100\n    assert calculate_price(60, 10) == 570.0\n    assert calculate_price(200, 5) == 900.0\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E29_magic.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E30",
+    "category": "refactor",
+    "difficulty": "hard",
+    "title": "Reduce complexity",
+    "task": "Refactor data/eval/workspace/E30_complex.py to reduce the cyclomatic complexity of process_order. Use early returns and helper functions. All tests must pass.",
+    "setup_files": {"data/eval/workspace/E30_complex.py": "def process_order(order):\n    if order:\n        if 'items' in order:\n            if len(order['items']) > 0:\n                total = 0\n                for item in order['items']:\n                    if 'price' in item and 'qty' in item:\n                        if item['qty'] > 0:\n                            total += item['price'] * item['qty']\n                if total > 0:\n                    if 'discount' in order:\n                        total *= (1 - order['discount'])\n                    return {'status': 'ok', 'total': total}\n                else:\n                    return {'status': 'error', 'msg': 'empty cart'}\n            else:\n                return {'status': 'error', 'msg': 'no items'}\n        else:\n            return {'status': 'error', 'msg': 'missing items'}\n    else:\n        return {'status': 'error', 'msg': 'no order'}\n\nif __name__ == '__main__':\n    assert process_order(None)['status'] == 'error'\n    assert process_order({})['status'] == 'error'\n    assert process_order({'items': []})['status'] == 'error'\n    assert process_order({'items': [{'price': 10, 'qty': 2}]})['total'] == 20\n    assert process_order({'items': [{'price': 10, 'qty': 2}], 'discount': 0.1})['total'] == 18.0\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E30_complex.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E31",
+    "category": "test_writing",
+    "difficulty": "medium",
+    "title": "Write tests for existing code",
+    "task": "Read data/eval/workspace/E31_target.py and write a comprehensive test file at data/eval/workspace/E31_test.py using pytest. Cover normal cases, edge cases, and error cases. Run the tests to verify they pass.",
+    "setup_files": {"data/eval/workspace/E31_target.py": "def fibonacci(n):\n    if n < 0:\n        raise ValueError('n must be non-negative')\n    if n <= 1:\n        return n\n    a, b = 0, 1\n    for _ in range(2, n + 1):\n        a, b = b, a + b\n    return b\n\ndef is_palindrome(s):\n    s = s.lower().strip()\n    return s == s[::-1]"},
+    "verify_test": "python -m pytest data/eval/workspace/E31_test.py -q",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E32",
+    "category": "test_writing",
+    "difficulty": "hard",
+    "title": "Write integration test",
+    "task": "Create data/eval/workspace/E32_integration.py that tests the full pipeline: read CSV -> filter rows -> write output -> verify output. Use the sales.csv fixture.",
+    "verify_test": "python data/eval/workspace/E32_integration.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E33",
+    "category": "test_writing",
+    "difficulty": "medium",
+    "title": "Add edge case tests",
+    "task": "data/eval/workspace/E33_existing_test.py has basic tests. Add tests for edge cases: empty input, very large input, unicode, None. All tests must pass.",
+    "setup_files": {"data/eval/workspace/E33_existing_test.py": "def normalize(s):\n    if not s:\n        return ''\n    return s.strip().lower()\n\ndef test_basic():\n    assert normalize('  Hello  ') == 'hello'\n\ndef test_empty():\n    assert normalize('') == ''"},
+    "verify_test": "python -m pytest data/eval/workspace/E33_existing_test.py -q",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E34",
+    "category": "test_writing",
+    "difficulty": "hard",
+    "title": "Write parametrized tests",
+    "task": "Rewrite data/eval/workspace/E34_simple_test.py to use @pytest.mark.parametrize with at least 8 test cases including edge cases.",
+    "setup_files": {"data/eval/workspace/E34_simple_test.py": "def classify_age(age):\n    if age < 0: raise ValueError\n    if age < 13: return 'child'\n    if age < 18: return 'teen'\n    if age < 65: return 'adult'\n    return 'senior'\n\ndef test_child():\n    assert classify_age(5) == 'child'\n\ndef test_adult():\n    assert classify_age(30) == 'adult'"},
+    "verify_test": "python -m pytest data/eval/workspace/E34_simple_test.py -q",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E35",
+    "category": "test_writing",
+    "difficulty": "medium",
+    "title": "Test error handling",
+    "task": "Write tests that verify the error handling in data/eval/workspace/E35_errors.py — test that the right exceptions are raised with the right messages.",
+    "setup_files": {"data/eval/workspace/E35_errors.py": "class InsufficientFunds(Exception): pass\n\nclass BankAccount:\n    def __init__(self, balance=0):\n        self.balance = balance\n    def withdraw(self, amount):\n        if amount <= 0:\n            raise ValueError('Amount must be positive')\n        if amount > self.balance:\n            raise InsufficientFunds(f'Cannot withdraw {amount}, balance is {self.balance}')\n        self.balance -= amount\n        return self.balance"},
+    "verify_test": "python -m pytest data/eval/workspace/E35_errors_test.py -q",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E36",
+    "category": "multi_file",
+    "difficulty": "hard",
+    "title": "Fix cross-file import error",
+    "task": "The project in data/eval/workspace/E36_project/ has an import error. Fix it so that 'python data/eval/workspace/E36_project/main.py' runs successfully.",
+    "setup_files": {
+      "data/eval/workspace/E36_project/__init__.py": "",
+      "data/eval/workspace/E36_project/utils.py": "def helper():\n    return 'helped!'",
+      "data/eval/workspace/E36_project/main.py": "from helpers import helper  # BUG: wrong module name\n\nprint(helper())"
+    },
+    "verify_test": "python data/eval/workspace/E36_project/main.py",
+    "verify_output_contains": "helped!",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E37",
+    "category": "multi_file",
+    "difficulty": "hard",
+    "title": "Add missing dependency",
+    "task": "The project in data/eval/workspace/E37_project/ is missing a module. Create the missing data/eval/workspace/E37_project/validator.py so that main.py passes.",
+    "setup_files": {
+      "data/eval/workspace/E37_project/main.py": "from validator import validate_email\n\nassert validate_email('test@example.com') == True\nassert validate_email('invalid') == False\nassert validate_email('a@b.c') == True\nprint('PASS')",
+      "data/eval/workspace/E37_project/__init__.py": ""
+    },
+    "verify_test": "python data/eval/workspace/E37_project/main.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E38",
+    "category": "multi_file",
+    "difficulty": "hard",
+    "title": "Refactor across files",
+    "task": "Split data/eval/workspace/E38_monolith.py into three files: models.py (data classes), repository.py (storage), main.py (entry point). All tests must still pass.",
+    "setup_files": {"data/eval/workspace/E38_monolith.py": "import json\n\nclass User:\n    def __init__(self, name, email):\n        self.name = name\n        self.email = email\n    def to_dict(self):\n        return {'name': self.name, 'email': self.email}\n\nclass UserRepo:\n    def __init__(self, path='data/eval/workspace/E38_users.json'):\n        self.path = path\n        self.users = []\n    def add(self, user):\n        self.users.append(user)\n        self._save()\n    def find_by_name(self, name):\n        for u in self.users:\n            if u.name == name:\n                return u\n        return None\n    def _save(self):\n        with open(self.path, 'w') as f:\n            json.dump([u.to_dict() for u in self.users], f)\n\nif __name__ == '__main__':\n    repo = UserRepo()\n    repo.add(User('alice', 'a@b.c'))\n    assert repo.find_by_name('alice').email == 'a@b.c'\n    assert repo.find_by_name('bob') is None\n    print('PASS')"},
+    "verify_test": "python data/eval/workspace/E38_project/main.py",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E39",
+    "category": "multi_file",
+    "difficulty": "hard",
+    "title": "Fix circular dependency",
+    "task": "Fix the circular import in data/eval/workspace/E39_circ/ so that main.py runs without ImportError.",
+    "setup_files": {
+      "data/eval/workspace/E39_circ/__init__.py": "",
+      "data/eval/workspace/E39_circ/a.py": "from b import get_b_value\ndef get_a_value():\n    return 'a' + get_b_value()",
+      "data/eval/workspace/E39_circ/b.py": "from a import get_a_value\ndef get_b_value():\n    return 'b'",
+      "data/eval/workspace/E39_circ/main.py": "from a import get_a_value\nprint(get_a_value())"
+    },
+    "verify_test": "python data/eval/workspace/E39_circ/main.py",
+    "verify_output_contains": "ab",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E40",
+    "category": "multi_file",
+    "difficulty": "hard",
+    "title": "Add config file support",
+    "task": "Add a config.json-based configuration system to the project in data/eval/workspace/E40_config/. main.py should read settings from config.json instead of hardcoding them.",
+    "setup_files": {
+      "data/eval/workspace/E40_config/__init__.py": "",
+      "data/eval/workspace/E40_config/config.json": "{\"greeting\": \"Welcome\", \"max_retries\": 3}",
+      "data/eval/workspace/E40_config/main.py": "greeting = 'Hello'  # TODO: read from config\nmax_retries = 5  # TODO: read from config\nprint(f'{greeting}! Will retry {max_retries} times')"
+    },
+    "verify_test": "python data/eval/workspace/E40_config/main.py",
+    "verify_output_contains": "Welcome",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E41",
+    "category": "agent_loop",
+    "difficulty": "hard",
+    "title": "Fix tool calling format",
+    "task": "Read runtime/loop.py and fix the _convert_tools_to_openai_format function so it produces correct OpenAI-compatible tool schemas. Verify by running the existing test.",
+    "verify_test": "python -m pytest tests/ -k 'tool' -q",
+    "expected_tools": ["file_read", "grep", "file_write", "bash"]
+  },
+  {
+    "id": "E42",
+    "category": "agent_loop",
+    "difficulty": "hard",
+    "title": "Fix message trimming",
+    "task": "runtime/loop.py has duplicate message trimming logic in _build_messages() and run_task(). Consolidate them into one function. All existing tests must pass.",
+    "verify_test": "python -m pytest tests/ -q",
+    "expected_tools": ["file_read", "grep", "file_write", "bash"]
+  },
+  {
+    "id": "E43",
+    "category": "agent_loop",
+    "difficulty": "hard",
+    "title": "Add API key validation",
+    "task": "Add a pre-flight check in runtime/loop.py that validates the API key is set before starting the loop. If missing, raise a clear error instead of retrying 10 times on 401.",
+    "verify_test": "python -c \"from runtime.loop import CodexLoop, LoopConfig; print('import OK')\"",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E44",
+    "category": "agent_loop",
+    "difficulty": "hard",
+    "title": "Remove module-level side effects",
+    "task": "runtime/loop.py lines 19-20 do os.environ.pop() at module load time. Move this into the session/config level so it only affects CodexLoop instances, not the entire process.",
+    "verify_test": "python -m pytest tests/ -q",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E45",
+    "category": "agent_loop",
+    "difficulty": "hard",
+    "title": "Fix session truncation strategy",
+    "task": "runtime/session.py append_message() truncates ALL messages when any single message exceeds 5000 chars. Fix it to only truncate the oversized message, keeping other messages intact.",
+    "verify_test": "python -m pytest tests/ -q",
+    "expected_tools": ["file_read", "file_write", "bash"]
+  },
+  {
+    "id": "E46",
+    "category": "self_improve",
+    "difficulty": "hard",
+    "title": "Create a benchmark runner",
+    "task": "Create data/eval/run_eval.py that loads this tasks.json file, runs each task through CodexLoop, and outputs a JSON report with pass/fail per task and overall statistics.",
+    "verify_file": "data/eval/run_eval.py",
+    "verify_min_length": 200,
+    "expected_tools": ["file_read", "file_write"]
+  },
+  {
+    "id": "E47",
+    "category": "self_improve",
+    "difficulty": "hard",
+    "title": "Create a failure analyzer",
+    "task": "Create data/eval/analyze_failures.py that reads an eval report JSON and categorizes failures by type: tool_call_miss, wrong_fix, timeout, import_error, other.",
+    "verify_file": "data/eval/analyze_failures.py",
+    "verify_min_length": 100,
+    "expected_tools": ["file_write"]
+  },
+  {
+    "id": "E48",
+    "category": "self_improve",
+    "difficulty": "hard",
+    "title": "Build a lessons.json seed",
+    "task": "Read the current STATUS.md and AUTONOMOUS_REPORT.md, extract all failure patterns and their fixes, and create data/eval/lessons.json — an array of {pattern, fix, source} objects.",
+    "verify_file": "data/eval/lessons.json",
+    "expected_tools": ["file_read", "file_write"]
+  },
+  {
+    "id": "E49",
+    "category": "self_improve",
+    "difficulty": "hard",
+    "title": "Create a patch reviewer prompt",
+    "task": "Create data/eval/reviewer_prompt.txt — a system prompt for a reviewer agent that takes a diff and a test result, and outputs: APPROVED/REJECTED with reasoning.",
+    "verify_file": "data/eval/reviewer_prompt.txt",
+    "verify_min_length": 100,
+    "expected_tools": ["file_write"]
+  },
+  {
+    "id": "E50",
+    "category": "self_improve",
+    "difficulty": "hard",
+    "title": "Design the self-improvement loop",
+    "task": "Create data/eval/self_improve_loop.py — a skeleton that implements: load_eval -> run_tasks -> collect_failures -> analyze -> generate_fix -> test_fix -> record_lesson. It should be runnable as a framework even if the actual LLM calls are stubbed.",
+    "verify_file": "data/eval/self_improve_loop.py",
+    "verify_min_length": 200,
+    "expected_tools": ["file_write"]
+  }
+]

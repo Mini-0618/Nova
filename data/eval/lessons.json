@@ -1,0 +1,112 @@
+[
+  {
+    "id": "lesson-001",
+    "pattern": "Model describes tool calls in text instead of using structured tool_calls format",
+    "fix": "Simplify system prompt, remove tool descriptions from prompt, rely on tool schema definitions only",
+    "category": "agent_loop",
+    "source_task": "E41",
+    "confidence": 0.9,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-002",
+    "pattern": "Calling non-existent method name on API object (e.g. loop.run instead of loop.run_task)",
+    "fix": "Check actual method signatures before calling; grep for 'def method_name' in the target module",
+    "category": "bugfix",
+    "source_task": "E41",
+    "confidence": 0.95,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-003",
+    "pattern": "Assuming return type is dict when it's actually a string (calling .get() on string)",
+    "fix": "Check the actual return type by reading the function's return statement before using the result",
+    "category": "bugfix",
+    "source_task": "E41",
+    "confidence": 0.95,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-004",
+    "pattern": "Greedy regex matching too much when extracting JSON from LLM output",
+    "fix": "Use json.JSONDecoder.raw_decode() instead of regex to find the first valid JSON object",
+    "category": "agent_loop",
+    "source_task": "E41",
+    "confidence": 0.85,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-005",
+    "pattern": "Windows file lock prevents cleanup when SQLite connection is still open",
+    "fix": "Add explicit close() method and use context manager (with statement) for session managers",
+    "category": "multi_file",
+    "source_task": "E45",
+    "confidence": 0.9,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-006",
+    "pattern": "Module-level os.environ.pop() affects entire process, not just the module",
+    "fix": "Move environment variable manipulation into instance methods or config initialization",
+    "category": "agent_loop",
+    "source_task": "E44",
+    "confidence": 0.85,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-007",
+    "pattern": "Message truncation triggered by one large message compresses ALL messages in history",
+    "fix": "Only truncate individual oversized messages, preserve the rest of the conversation history",
+    "category": "agent_loop",
+    "source_task": "E45",
+    "confidence": 0.8,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-008",
+    "pattern": "API key missing causes 10 retries on 401 before reporting error",
+    "fix": "Validate API key exists before entering the retry loop; fail fast with clear message",
+    "category": "agent_loop",
+    "source_task": "E43",
+    "confidence": 0.9,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-009",
+    "pattern": "Duplicate message trimming logic in two places (function and inline in loop)",
+    "fix": "Consolidate into a single function and call it from both places",
+    "category": "refactor",
+    "source_task": "E42",
+    "confidence": 0.85,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-010",
+    "pattern": "Checkpoint file write is not atomic — crash during write corrupts the checkpoint",
+    "fix": "Write to a temporary file first, then os.rename() to the final path",
+    "category": "bugfix",
+    "source_task": "E20",
+    "confidence": 0.8,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  }
+]
