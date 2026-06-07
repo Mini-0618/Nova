@@ -108,5 +108,126 @@
     "times_applied": 0,
     "times_successful": 0,
     "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E01",
+    "pattern": "File write operation failed because the specified file path or directory does not exist, leading to 'file not found' error.",
+    "fix": "Ensure the parent directory exists before writing the file. Use the Write tool with a valid file path in an existing directory, or create the directory first using a shell command like 'mkdir -p'. For example, write to 'E01_output.txt' in the current working directory or specify a full path that is accessible.",
+    "category": "file_io",
+    "source_task": "E01",
+    "confidence": 0.8,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E08",
+    "pattern": "ERROR",
+    "fix": "Use Edit tool with exact old_string containing 'ERROR' and new_string containing 'FIXED'. Ensure exact match including whitespace and line endings. If file is locked, close other programs using it first.",
+    "category": "file_io",
+    "source_task": "E08",
+    "confidence": 0.8,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E40",
+    "pattern": "Config file reading failed - likely missing file validation, JSON parsing error handling, or incorrect file path",
+    "fix": "Add try/except for FileNotFoundError and json.JSONDecodeError, validate config file exists before reading, use os.path.abspath for reliable path resolution, provide default config fallback",
+    "category": "multi_file",
+    "source_task": "E40",
+    "confidence": 0.8,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E08-fix",
+    "pattern": "Model uses sandbox_exec for file edits — sandbox files are isolated from workspace, changes are lost",
+    "fix": "Always use Read+Edit+Bash for file modifications. sandbox_exec is for quick calculations only, not file operations.",
+    "category": "file_io",
+    "source_task": "E08",
+    "confidence": 0.9,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E10",
+    "pattern": "Append task fails — model reads file but forgets to write back the original content plus new line",
+    "fix": "For append: Read file first, then Write(original_content + new_content). Or use Bash with echo >> file.",
+    "category": "file_io",
+    "source_task": "E10",
+    "confidence": 0.85,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-CLI-general",
+    "pattern": "CLI tasks fail — model creates Python code but either: (a) uses sandbox_exec so files are in wrong dir, (b) python not in PATH for subprocess, (c) test verification uses different Python than expected",
+    "fix": "For CLI tasks: 1) Write script to file using Write tool with FULL absolute path, 2) Run with Bash(\"python full_path\"), 3) Verify with Bash, not sandbox_exec. The PATH fix should help but model needs explicit guidance.",
+    "category": "cli",
+    "source_task": "E22",
+    "confidence": 0.9,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E29",
+    "pattern": "Refactoring magic numbers — model replaces values but breaks the test assertions that use the original numbers",
+    "fix": "When replacing magic numbers, also update the test assertions to use the new constants. Keep the same values.",
+    "category": "refactor",
+    "source_task": "E29",
+    "confidence": 0.85,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E35",
+    "pattern": "Error handling test writing — model writes tests but uses wrong exception class names or wrong assertion syntax",
+    "fix": "Read the source code first to get exact exception class names and messages. Use pytest.raises(ExceptionType, match=...) syntax.",
+    "category": "test_writing",
+    "source_task": "E35",
+    "confidence": 0.8,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E38",
+    "pattern": "Cross-file refactoring — model splits code but breaks imports between the new files",
+    "fix": "After splitting files, verify imports work by running the main script. Use relative imports within packages or absolute paths.",
+    "category": "multi_file",
+    "source_task": "E38",
+    "confidence": 0.85,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E41",
+    "pattern": "Agent loop code modification — model tries to fix complex internal code but introduces new bugs or misunderstands the function signature",
+    "fix": "When modifying core runtime code, read the full function first, understand all callers, then make minimal changes. Test with import check before and after.",
+    "category": "agent_loop",
+    "source_task": "E41",
+    "confidence": 0.85,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
+  },
+  {
+    "id": "lesson-E50",
+    "pattern": "Large code generation task times out — model generates too much code in too many iterations",
+    "fix": "For large file creation tasks, break into smaller steps: first create skeleton, then fill in functions. Or use Write with complete content in one call.",
+    "category": "self_improve",
+    "source_task": "E50",
+    "confidence": 0.8,
+    "times_applied": 0,
+    "times_successful": 0,
+    "created_at": "2026-06-07"
   }
 ]

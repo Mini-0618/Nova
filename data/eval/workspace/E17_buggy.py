@@ -1,5 +1,5 @@
 def read_file(path):
-    with open(path, 'r') as f:  # BUG: no encoding specified
+    with open(path, 'r', encoding='utf-8') as f:
         return f.read()
 
 if __name__ == '__main__':

@@ -1,23 +1,26 @@
-# Named constants for thresholds and discounts
-LARGE_QUANTITY_THRESHOLD = 100
-LARGE_QUANTITY_DISCOUNT = 0.1
-MEDIUM_QUANTITY_THRESHOLD = 50
-MEDIUM_QUANTITY_DISCOUNT = 0.05
-NO_DISCOUNT = 0
-FREE_SHIPPING_THRESHOLD = 500
-SHIPPING_COST = 25
+# Named constants for quantity thresholds
+HIGH_DISCOUNT_QUANTITY_THRESHOLD = 100
+MEDIUM_DISCOUNT_QUANTITY_THRESHOLD = 50
+
+# Named constants for discount rates
+HIGH_DISCOUNT_RATE = 0.1
+MEDIUM_DISCOUNT_RATE = 0.05
+
+# Named constants for shipping-related thresholds and deductions
+SHIPPING_FEE_THRESHOLD = 500
+SHIPPING_FEE_DISCOUNT = 25
 
 
 def calculate_price(quantity, unit_price):
-    if quantity > LARGE_QUANTITY_THRESHOLD:
-        discount = LARGE_QUANTITY_DISCOUNT
-    elif quantity > MEDIUM_QUANTITY_THRESHOLD:
-        discount = MEDIUM_QUANTITY_DISCOUNT
+    if quantity > HIGH_DISCOUNT_QUANTITY_THRESHOLD:
+        discount = HIGH_DISCOUNT_RATE
+    elif quantity > MEDIUM_DISCOUNT_QUANTITY_THRESHOLD:
+        discount = MEDIUM_DISCOUNT_RATE
     else:
-        discount = NO_DISCOUNT
+        discount = 0
     total = quantity * unit_price * (1 - discount)
-    if total > FREE_SHIPPING_THRESHOLD:
-        total -= SHIPPING_COST
+    if total > SHIPPING_FEE_THRESHOLD:
+        total -= SHIPPING_FEE_DISCOUNT
     return total
 
 if __name__ == '__main__':

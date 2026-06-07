@@ -205,9 +205,25 @@ async def run_task_with_loop(task: Dict[str, Any], model: str = "deepseek-chat")
         loop = CodexLoop(config)
         task_prompt = task["task"]
 
+        # Load relevant lessons
+        lessons_text = ""
+        lessons_file = EVAL_DIR / "lessons.json"
+        if lessons_file.exists():
+            with open(lessons_file, 'r', encoding='utf-8') as f:
+                lessons = json.load(f)
+            relevant = []
+            cat = task.get("category", "")
+            for l in lessons:
+                if l.get("category") == cat or any(w in task_prompt.lower() for w in l.get("pattern", "").lower().split()[:3]):
+                    relevant.append(l)
+            if relevant:
+                lessons_text = "\nLessons from past failures:\n"
+                for l in relevant[:3]:
+                    lessons_text += f"- {l['pattern'][:80]} -> Fix: {l['fix'][:80]}\n"
+
         # Add verification instructions to the prompt
         full_prompt = f"""Task: {task_prompt}
-
+{lessons_text}
 After completing the task, verify your work:
 - If the task asks you to run a test, run it.
 - If the task creates a file, confirm it exists and has the right content.

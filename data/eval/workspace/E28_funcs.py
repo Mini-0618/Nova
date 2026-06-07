@@ -15,14 +15,33 @@ class Counter:
         self.count = 0
 
 
+# Module-level instance for backward compatibility with the standalone function API
+_counter = Counter()
+
+
+def increment():
+    _counter.increment()
+
+
+def decrement():
+    _counter.decrement()
+
+
+def get_count():
+    return _counter.get_count()
+
+
+def reset():
+    _counter.reset()
+
+
 if __name__ == '__main__':
-    counter = Counter()
-    counter.reset()
-    counter.increment()
-    counter.increment()
-    assert counter.get_count() == 2
-    counter.decrement()
-    assert counter.get_count() == 1
-    counter.reset()
-    assert counter.get_count() == 0
+    reset()
+    increment()
+    increment()
+    assert get_count() == 2
+    decrement()
+    assert get_count() == 1
+    reset()
+    assert get_count() == 0
     print('PASS')

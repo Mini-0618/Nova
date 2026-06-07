@@ -1,4 +1,4 @@
-def add(a: int, b: int) -> int:
+def add(a: int | float, b: int | float) -> int | float:
     return a + b
 
 def greet(name: str) -> str:

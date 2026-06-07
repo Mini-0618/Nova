@@ -167,15 +167,24 @@ class SessionManager:
             total_cost=row["total_cost"],
         )
 
+    @staticmethod
+    def _truncate_oversized_messages(msgs: List[Dict]) -> List[Dict]:
+        """Truncate only individual messages that exceed the size limit."""
+        result = []
+        for m in msgs:
+            if len(json.dumps(m, ensure_ascii=False)) > 5000:
+                result.append({"role": m.get("role"), "content": (m.get("content") or "")[:2000], "truncated": True})
+            else:
+                result.append(m)
+        return result
+
     def update_session(self, session: Session):
         now = int(time.time())
         session.updated_at = now
         conn = self._get_conn()
-        # Truncate messages and tool_results before saving to avoid blob overflow
+        # Truncate oversized messages and tool_results before saving to avoid blob overflow
         # Make a deep copy to avoid mutating the caller's data
-        msgs = list(session.messages)
-        if any(len(json.dumps(m, ensure_ascii=False)) > 5000 for m in msgs):
-            msgs = [{"role": m.get("role"), "content": (m.get("content") or "")[:2000], "truncated": True} for m in msgs[-50:]]
+        msgs = self._truncate_oversized_messages(list(session.messages))
         tool_res = session.tool_results[-100:]  # keep last 100 only
         with self._lock:
             conn.execute(
@@ -206,10 +215,8 @@ class SessionManager:
                 return None
             existing = json.loads(row["messages"])
             existing.append(msg)
-            # Truncate if any message is too large
-            msgs = existing
-            if any(len(json.dumps(m, ensure_ascii=False)) > 5000 for m in msgs):
-                msgs = [{"role": m.get("role"), "content": (m.get("content") or "")[:2000], "truncated": True} for m in msgs[-50:]]
+            # Only truncate messages that individually exceed the size limit
+            msgs = self._truncate_oversized_messages(existing)
             now = int(time.time())
             conn.execute(
                 "UPDATE sessions SET messages=?, updated_at=? WHERE id=?",

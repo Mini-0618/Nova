@@ -15,10 +15,6 @@ from typing import Optional, Dict, Any, List, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
-# CRITICAL: Unset proxy env vars to prevent API key mangling
-for _k in ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'ALL_PROXY', 'all_proxy']:
-    os.environ.pop(_k, None)
-
 import sys as _sys
 _root = Path(__file__).parent.parent
 if str(_root) not in _sys.path:
@@ -121,6 +117,8 @@ class LoopConfig:
     memory_importance_threshold: float = 0.6  # Threshold for auto-remembering
     # Workspace settings
     workspace: str = ""  # Working directory for file operations
+    # Proxy settings — only applied per CodexLoop instance, not globally at import
+    clear_proxy_env: bool = True  # Unset proxy env vars during loop execution
 
 
 # ─── LLM Interface ───────────────────────────────────────────────────────

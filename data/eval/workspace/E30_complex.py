@@ -1,29 +1,37 @@
-def _calculate_items_total(items):
+def _validate_order(order):
+    """Validate the order structure and return error dict if invalid."""
+    if not order:
+        return {'status': 'error', 'msg': 'no order'}
+    if 'items' not in order:
+        return {'status': 'error', 'msg': 'missing items'}
+    if len(order['items']) == 0:
+        return {'status': 'error', 'msg': 'no items'}
+    return None
+
+
+def _calculate_total(items):
+    """Calculate the total price from a list of items. Returns 0 if no valid items."""
     total = 0
     for item in items:
-        if 'price' in item and 'qty' in item and item['qty'] > 0:
-            total += item['price'] * item['qty']
+        if 'price' in item and 'qty' in item:
+            if item['qty'] > 0:
+                total += item['price'] * item['qty']
     return total
 
 
-def _apply_discount(total, order):
-    if 'discount' in order:
-        total *= (1 - order['discount'])
+def _apply_discount(total, discount):
+    """Apply a discount to the total if present and valid."""
+    if 'discount' in discount:
+        total *= (1 - discount['discount'])
     return total
 
 
 def process_order(order):
-    if not order:
-        return {'status': 'error', 'msg': 'no order'}
+    error = _validate_order(order)
+    if error:
+        return error
 
-    if 'items' not in order:
-        return {'status': 'error', 'msg': 'missing items'}
-
-    if not order['items']:
-        return {'status': 'error', 'msg': 'no items'}
-
-    total = _calculate_items_total(order['items'])
-
+    total = _calculate_total(order['items'])
     if total <= 0:
         return {'status': 'error', 'msg': 'empty cart'}
 

@@ -9,14 +9,28 @@ def test_basic():
 def test_empty():
     assert normalize('') == ''
 
-def test_none():
+# Edge case tests
+
+def test_none_input():
+    """None should return empty string (falsy check)."""
     assert normalize(None) == ''
 
 def test_large_input():
-    large = ' ' * 1000000 + 'Hello World' + ' ' * 1000000
-    assert normalize(large) == 'hello world'
+    """Very large input should be handled correctly."""
+    large_string = '  ' + 'A' * 1_000_000 + '  '
+    result = normalize(large_string)
+    assert result == 'a' * 1_000_000
 
-def test_unicode():
-    assert normalize('  café résumé  ') == 'café résumé'
+def test_unicode_input():
+    """Unicode characters should be lowercased correctly."""
+    assert normalize('  Héllo Wörld  ') == 'héllo wörld'
     assert normalize('  日本語テスト  ') == '日本語テスト'
-    assert normalize('  Привет мир  ') == 'привет мир'
+    assert normalize('  Ñoño  ') == 'ñoño'
+    assert normalize('  Ελληνικά  ') == 'ελληνικά'
+    assert normalize('  한국어  ') == '한국어'
+
+def test_whitespace_only():
+    """Strings with only whitespace should return empty string."""
+    assert normalize('   ') == ''
+    assert normalize('\t\n\r') == ''
+    assert normalize('  \t  \n  \r  ') == ''
