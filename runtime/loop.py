@@ -136,6 +136,8 @@ class LoopConfig:
         "mkfs", "dd if=", ":(){:|:&};:", "> /dev/sda",
     ])
     require_confirmation: bool = True  # require user confirmation for dangerous commands
+    # Streaming settings
+    stream: bool = False  # Enable streaming output
 
 
 # ─── LLM Interface ───────────────────────────────────────────────────────
