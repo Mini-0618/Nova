@@ -23,6 +23,7 @@ if str(_root) not in _sys.path:
 from tools.executor import ToolExecutor, get_executor, TOOL_DEFINITIONS  # noqa: E402
 from runtime.session import SessionManager, get_manager, Session  # noqa: E402
 from runtime.memory import MemoryManager, get_memory_manager  # noqa: E402
+from runtime.data_collector import DataCollector  # noqa: E402
 
 
 # ─── Decision Types ─────────────────────────────────────────────────────────
@@ -83,12 +84,19 @@ WORKFLOW:
 3. Bash to run/verify
 4. If it fails, read the error, fix, retry once
 
+CLI TASK EXAMPLES:
+- To run a Python script: 1. Write('script.py', code) 2. Bash('python script.py')
+- To capture command output: 1. Bash('python --version') 2. Write('output.txt', result)
+- To install a package: 1. Bash('pip install requests') 2. Bash('python -c "import requests; print(requests.__version__)"')
+- To create and test a module: 1. Write('mymod.py', code) 2. Write('test_mymod.py', test_code) 3. Bash('python -m pytest test_mymod.py -v')
+
 RULES:
 - Create files with Write, then run with Bash("python filename")
 - Run tests with Bash("python -m pytest ...")
 - Check output with Read or Bash
 - Never describe what you would do — just do it
-- Stop when the task is verified complete"""
+- Stop when the task is verified complete
+- ALWAYS call tools to perform actions. NEVER just describe what you would do in text."""
 
 
 # ─── LoopConfig ───────────────────────────────────────────────────────────
@@ -180,6 +188,12 @@ def _msg_char_len(msg: Dict) -> int:
     return len(json.dumps(msg, ensure_ascii=False))
 
 
+_TOOL_USE_REMINDER = (
+    "You must use tools. Call Write to create files, Bash to execute commands. "
+    "Do not describe what you would do."
+)
+
+
 def _build_messages(task: str, history: List[Dict], system_prompt: str,
                     max_context_tokens: int = 0) -> List[Dict]:
     """Build message list with token-aware context window management.
@@ -200,6 +214,18 @@ def _build_messages(task: str, history: List[Dict], system_prompt: str,
         if role == "assistant" and msg.get("tool_calls"):
             m["tool_calls"] = msg["tool_calls"]
         full_messages.append(m)
+
+    # Auto-inject tool-use reminder if last assistant message had no tool_calls
+    if full_messages:
+        last_assistant = None
+        for m in reversed(full_messages):
+            if m.get("role") == "assistant":
+                last_assistant = m
+                break
+        if last_assistant and not last_assistant.get("tool_calls"):
+            # Last assistant output was pure text (no tools) — remind it to use tools
+            full_messages.append({"role": "user", "content": _TOOL_USE_REMINDER})
+
     full_messages.append({"role": "user", "content": task})
 
     system_msg = {"role": "system", "content": system_prompt}
@@ -759,6 +785,11 @@ class DecisionEngine:
                         stripped.lower().startswith(("i'll ", "i will ", "let me ", "here's ", "first, ", "to fix")),
                         "```python" in stripped and len(stripped) > 200,
                         "i would " in stripped.lower() and "tool" in stripped.lower(),
+                        "here is the code" in stripped.lower(),
+                        "here's the code" in stripped.lower(),
+                        "the following code" in stripped.lower(),
+                        "you can use" in stripped.lower() and len(stripped) > 100,
+                        "step 1:" in stripped.lower() and "step 2:" in stripped.lower(),
                     ]
                     if any(describe_patterns):
                         # Model is describing tools in text instead of using tool_calls — force continue
@@ -766,8 +797,8 @@ class DecisionEngine:
                         return Action(
                             type=ActionType.RESPOND,
                             response_text="[tool description suppressed — continuing]",
-                            confidence=0.5,
-                            reasoning="Model described tools in text, forcing next iteration",
+                            confidence=0.3,
+                            reasoning="Model described tools in text instead of calling them, confidence dropped to 0.3, forcing next iteration",
                             will_continue=True,
                         )
                     return Action(
@@ -932,6 +963,9 @@ class CodexLoop:
                                      max_context_tokens=self.config.max_context_tokens)
         message_history: List[Dict] = []
         total_input_tokens = 0
+
+        # Initialize data collector for training data
+        data_collector = DataCollector(session_id=session_id)
         total_output_tokens = 0
 
         try:
@@ -1040,6 +1074,20 @@ class CodexLoop:
 
                 if action.type == ActionType.RESPOND:
                     if not action.will_continue:
+                        # Record final response as training data
+                        try:
+                            data_collector.record(
+                                task=task,
+                                messages_sent=messages,
+                                llm_response=response,
+                                tool_calls=[],
+                                tool_results=[],
+                                success=True,
+                                tokens_used=input_tok + output_tok,
+                                iteration=self._iteration,
+                            )
+                        except Exception:
+                            pass
                         self.status = "completed"
                         self._running = False
                         final_text = action.response_text or ""
@@ -1150,6 +1198,31 @@ class CodexLoop:
                         # Clear pending so execute_action doesn't see stale state
                         self.decision_engine._pending_calls = pending
 
+                    # Record training data for this iteration
+                    try:
+                        tc_list = assistant_msg.get("tool_calls", [])
+                        tool_results_for_record = []
+                        for msg in messages:
+                            if msg.get("role") == "tool":
+                                tool_results_for_record.append({
+                                    "tool_call_id": msg.get("tool_call_id", ""),
+                                    "content": msg.get("content", ""),
+                                    "success": True,  # will be updated below
+                                })
+                        success_flag = result.get("success") if isinstance(result, dict) else False
+                        data_collector.record(
+                            task=task,
+                            messages_sent=messages[:-1],  # exclude the tool result we just added
+                            llm_response=response,
+                            tool_calls=tc_list,
+                            tool_results=tool_results_for_record,
+                            success=success_flag,
+                            tokens_used=input_tok + output_tok,
+                            iteration=self._iteration,
+                        )
+                    except Exception:
+                        pass  # Don't let collection errors break the loop
+
                     if time.time() - self._last_save > self.config.auto_save_interval_sec:
                         self.session_mgr.checkpoint(self._current_session)
                         self._last_save = time.time()
@@ -1175,6 +1248,13 @@ class CodexLoop:
             traceback.print_exc()
 
         finally:
+            # Save training data
+            try:
+                self._data_collector = data_collector
+                data_collector.save()
+            except Exception:
+                pass
+
             self._current_session.status = "error" if self.error else "completed"
             self.session_mgr.update_session(self._current_session)
             self.status = self.status or "finished"
