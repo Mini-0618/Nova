@@ -1,0 +1,5 @@
+# Codex-Local Optional Dependencies - Browser Automation
+# Install with: pip install -r requirements-browser.txt
+# Requires: playwright installed browsers via: playwright install
+
+playwright>=1.40.0

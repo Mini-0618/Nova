@@ -1,0 +1,20 @@
+# Codex-Local Requirements (all-in-one for convenience)
+# Install: pip install -r requirements.txt
+
+# Core
+requests>=2.28.0
+gitpython>=3.1.0
+
+# Optional - Browser Automation (requires playwright install)
+# playwright>=1.40.0
+
+# Optional - LSP/Refactoring
+# rope>=1.7.0
+# jedi>=0.18.0
+
+# Optional - Advanced Debugging
+# debugpy>=1.6.0
+
+# Testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0

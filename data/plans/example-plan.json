@@ -1,0 +1,43 @@
+{
+  "id": "example-plan-001",
+  "name": "Example: Refactor a Python Project",
+  "description": "An example plan showing how to use the plan runner.",
+  "created_at": "2026-06-07T03:48:29.602188",
+  "tasks": [
+    {
+      "id": "task-001",
+      "title": "Analyze project structure",
+      "description": "List all Python files, check imports, identify main modules.",
+      "type": "analyze",
+      "target": "."
+    },
+    {
+      "id": "task-002",
+      "title": "Find and fix syntax errors",
+      "description": "Run py_compile on all .py files, fix any syntax errors found.",
+      "type": "fix",
+      "target": "."
+    },
+    {
+      "id": "task-003",
+      "title": "Add type hints",
+      "description": "Add type hints to function signatures in the main modules.",
+      "type": "code",
+      "target": "runtime/"
+    },
+    {
+      "id": "task-004",
+      "title": "Write tests",
+      "description": "Create pytest tests for the main functions.",
+      "type": "test",
+      "target": "tests/"
+    },
+    {
+      "id": "task-005",
+      "title": "Update documentation",
+      "description": "Update README.md with current API and usage examples.",
+      "type": "document",
+      "target": "README.md"
+    }
+  ]
+}

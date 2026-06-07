@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RootCode AI</title>
+    <style>
+        /* ── Reset & Variables ──────────────────────────────────────── */
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{
+            --bg:#0b0f1a;
+            --bg-surface:#111827;
+            --bg-card:#1a2236;
+            --bg-input:#0f1729;
+            --bg-hover:#1e2a45;
+            --border:#1e2d4a;
+            --border-focus:#6366f1;
+            --text:#e2e8f0;
+            --text-dim:#8896b3;
+            --text-muted:#556480;
+            --accent:#6366f1;
+            --accent-hover:#818cf8;
+            --green:#10b981;
+            --yellow:#f59e0b;
+            --red:#ef4444;
+            --blue:#3b82f6;
+            --radius:10px;
+            --radius-sm:6px;
+            --sidebar-w:280px;
+            --header-h:52px;
+        }
+        html,body{height:100%;overflow:hidden}
+        body{
+            font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans SC',sans-serif;
+            background:var(--bg);color:var(--text);
+        }
+        button{font-family:inherit;cursor:pointer}
+        input,textarea{font-family:inherit}
+
+        /* ── Login Screen ──────────────────────────────────────────── */
+        .login-screen{
+            height:100vh;display:flex;align-items:center;justify-content:center;
+            background:var(--bg);
+        }
+        .login-card{
+            width:400px;max-width:calc(100vw - 32px);padding:48px 40px;
+            background:var(--bg-surface);border:1px solid var(--border);
+            border-radius:16px;text-align:center;
+        }
+        .login-logo{font-size:40px;margin-bottom:8px}
+        .login-title{font-size:22px;font-weight:600;margin-bottom:6px}
+        .login-desc{font-size:13px;color:var(--text-dim);margin-bottom:28px;line-height:1.5}
+        .login-tabs{display:flex;margin-bottom:20px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+        .login-tab{
+            flex:1;padding:10px;border:none;background:transparent;
+            color:var(--text-dim);font-size:13px;transition:.15s
+        }
+        .login-tab.active{background:var(--text);color:var(--bg)}
+        .login-tab:not(.active):hover{background:rgba(99,102,241,.08)}
+        .login-form{display:flex;flex-direction:column;gap:12px}
+        .login-input{
+            width:100%;padding:12px 14px;border:1px solid var(--border);
+            border-radius:var(--radius-sm);background:var(--bg-input);
+            color:var(--text);font-size:14px;outline:none;transition:.15s
+        }
+        .login-input::placeholder{color:var(--text-muted)}
+        .login-input:focus{border-color:var(--accent)}
+        .login-error{font-size:12px;color:var(--red);text-align:left}
+        .login-btn{
+            width:100%;padding:12px;border:none;border-radius:var(--radius-sm);
+            background:var(--accent);color:#fff;font-size:14px;font-weight:500;
+            transition:.15s
+        }
+        .login-btn:hover{background:var(--accent-hover)}
+        .login-btn:disabled{opacity:.5;cursor:not-allowed}
+
+        /* ── App Layout ────────────────────────────────────────────── */
+        .app{display:none;height:100vh;flex-direction:row}
+        .app.active{display:flex}
+
+        /* ── Sidebar ───────────────────────────────────────────────── */
+        .sidebar{
+            width:var(--sidebar-w);background:var(--bg-surface);
+            border-right:1px solid var(--border);display:flex;flex-direction:column;
+            flex-shrink:0;transition:transform .2s
+        }
+        .sidebar-header{
+            padding:14px 16px;border-bottom:1px solid var(--border);
+            display:flex;align-items:center;justify-content:space-between
+        }
+        .sidebar-brand{font-size:15px;font-weight:600;color:var(--accent)}
+        .sidebar-close{
+            display:none;width:28px;height:28px;border:none;
+            background:transparent;color:var(--text-dim);font-size:16px;
+            border-radius:var(--radius-sm)
+        }
+        .sidebar-close:hover{background:var(--bg-hover)}
+
+        .new-chat-btn{
+            margin:12px 12px 0;padding:10px;border:1px dashed var(--border);
+            border-radius:var(--radius-sm);background:transparent;
+            color:var(--text-dim);font-size:13px;transition:.15s
+        }
+        .new-chat-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+        .session-list{flex:1;overflow-y:auto;padding:8px 12px}
+        .session-list::-webkit-scrollbar{width:4px}
+        .session-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+        .session-item{
+            padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;
+            margin-bottom:2px;transition:.1s;position:relative
+        }
+        .session-item:hover{background:var(--bg-hover)}
+        .session-item.active{background:var(--bg-hover);border-left:3px solid var(--accent)}
+        .session-item-title{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .session-item-meta{font-size:11px;color:var(--text-muted);margin-top:2px}
+        .session-item-delete{
+            position:absolute;right:8px;top:50%;transform:translateY(-50%);
+            width:24px;height:24px;border:none;background:transparent;
+            color:var(--text-muted);font-size:12px;border-radius:4px;
+            opacity:0;transition:.1s
+        }
+        .session-item:hover .session-item-delete{opacity:1}
+        .session-item-delete:hover{background:rgba(239,68,68,.15);color:var(--red)}
+
+        .sidebar-footer{
+            padding:12px;border-top:1px solid var(--border);
+            display:flex;align-items:center;gap:8px
+        }
+        .user-avatar{
+            width:32px;height:32px;border-radius:50%;
+            background:var(--accent);display:flex;align-items:center;
+            justify-content:center;font-size:13px;color:#fff;flex-shrink:0
+        }
+        .user-info{flex:1;min-width:0}
+        .user-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .user-stats{font-size:11px;color:var(--text-muted)}
+        .logout-btn{
+            width:28px;height:28px;border:none;background:transparent;
+            color:var(--text-muted);font-size:14px;border-radius:var(--radius-sm)
+        }
+        .logout-btn:hover{background:rgba(239,68,68,.1);color:var(--red)}
+
+        /* ── Main Area ─────────────────────────────────────────────── */
+        .main{flex:1;display:flex;flex-direction:column;min-width:0}
+
+        /* ── Header ────────────────────────────────────────────────── */
+        .header{
+            height:var(--header-h);padding:0 16px;
+            border-bottom:1px solid var(--border);
+            display:flex;align-items:center;gap:12px;
+            background:var(--bg-surface);flex-shrink:0
+        }
+        .menu-btn{
+            display:none;width:36px;height:36px;border:none;
+            background:transparent;color:var(--text);font-size:18px;
+            border-radius:var(--radius-sm)
+        }
+        .menu-btn:hover{background:var(--bg-hover)}
+
+        .mode-tabs{display:flex;gap:4px}
+        .mode-tab{
+            padding:6px 12px;border-radius:var(--radius-sm);border:none;
+            background:transparent;color:var(--text-dim);font-size:12px;
+            transition:.15s
+        }
+        .mode-tab:hover{color:var(--text)}
+        .mode-tab.active{background:var(--accent);color:#fff}
+
+        .header-spacer{flex:1}
+
+        .header-stats{display:flex;gap:14px;font-size:11px;color:var(--text-dim)}
+        .header-stat-val{color:var(--green);font-weight:500;margin-left:3px}
+
+        .memory-btn{
+            width:32px;height:32px;border:1px solid var(--border);
+            background:transparent;color:var(--text-dim);font-size:14px;
+            border-radius:var(--radius-sm);transition:.15s
+        }
+        .memory-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+        /* ── Chat Area ─────────────────────────────────────────────── */
+        .chat-area{
+            flex:1;overflow-y:auto;padding:20px 16px;
+            display:flex;flex-direction:column;gap:12px
+        }
+        .chat-area::-webkit-scrollbar{width:5px}
+        .chat-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+        /* Welcome */
+        .welcome{
+            text-align:center;padding:60px 20px;max-width:520px;
+            margin:auto
+        }
+        .welcome-icon{font-size:48px;margin-bottom:16px}
+        .welcome h2{font-size:22px;font-weight:600;margin-bottom:8px}
+        .welcome p{color:var(--text-dim);line-height:1.6;margin-bottom:24px;font-size:14px}
+        .quick-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+        .quick-action{
+            padding:8px 16px;border-radius:var(--radius);border:1px solid var(--border);
+            background:var(--bg-card);color:var(--text);font-size:13px;transition:.15s
+        }
+        .quick-action:hover{border-color:var(--accent);background:var(--bg-hover)}
+
+        /* Messages */
+        .msg{display:flex;gap:10px;max-width:780px;width:100%;margin:0 auto;animation:fadeUp .25s ease}
+        .msg.user{flex-direction:row-reverse}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+        .msg-avatar{
+            width:32px;height:32px;border-radius:8px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:15px;flex-shrink:0
+        }
+        .msg.user .msg-avatar{background:var(--blue)}
+        .msg.assistant .msg-avatar{background:var(--accent)}
+
+        .msg-body{flex:1;max-width:72%}
+        .msg-bubble{
+            padding:10px 14px;border-radius:var(--radius);
+            line-height:1.65;font-size:14px;word-break:break-word
+        }
+        .msg.user .msg-bubble{background:var(--blue);border-top-right-radius:4px}
+        .msg.assistant .msg-bubble{
+            background:var(--bg-card);border:1px solid var(--border);
+            border-top-left-radius:4px
+        }
+
+        .msg-meta{display:flex;gap:6px;margin-top:4px;font-size:10px;color:var(--text-muted)}
+        .msg.user .msg-meta{justify-content:flex-end}
+        .msg-tag{
+            padding:1px 5px;border-radius:3px;background:var(--bg-surface);
+            font-size:10px
+        }
+        .msg-tag.m-model{color:var(--accent)}
+        .msg-tag.m-cost{color:var(--green)}
+        .msg-tag.m-cpx{color:var(--yellow)}
+
+        /* Code blocks */
+        .code-block{
+            background:#0d1117;border-radius:8px;margin:8px 0;overflow:hidden
+        }
+        .code-head{
+            display:flex;justify-content:space-between;align-items:center;
+            padding:6px 10px;background:#161b22;font-size:11px;color:var(--text-dim)
+        }
+        .copy-btn{
+            padding:3px 8px;border-radius:3px;border:1px solid var(--border);
+            background:transparent;color:var(--text-dim);font-size:10px;transition:.15s
+        }
+        .copy-btn:hover{background:var(--bg-hover);color:var(--text)}
+        .code-body{
+            padding:10px;overflow-x:auto;
+            font-family:'JetBrains Mono','Fira Code','Monaco',monospace;
+            font-size:12.5px;line-height:1.5
+        }
+        .code-body code{color:#e6edf3}
+
+        /* Typing indicator */
+        .typing{display:flex;gap:4px;padding:6px 0}
+        .typing-dot{
+            width:7px;height:7px;border-radius:50%;background:var(--text-muted);
+            animation:blink 1.4s infinite
+        }
+        .typing-dot:nth-child(2){animation-delay:.2s}
+        .typing-dot:nth-child(3){animation-delay:.4s}
+        @keyframes blink{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+
+        /* Error */
+        .error-toast{
+            background:rgba(239,68,68,.1);border:1px solid var(--red);
+            border-radius:var(--radius-sm);padding:10px 14px;
+            color:var(--red);font-size:13px;max-width:780px;margin:0 auto;
+            animation:fadeUp .25s ease
+        }
+
+        /* ── Input Area ────────────────────────────────────────────── */
+        .input-area{
+            padding:12px 16px;border-top:1px solid var(--border);
+            background:var(--bg-surface);flex-shrink:0
+        }
+        .input-row{max-width:780px;margin:0 auto;display:flex;gap:10px}
+        .input-wrap{flex:1;position:relative}
+        .msg-input{
+            width:100%;padding:10px 14px;border-radius:var(--radius);
+            border:1px solid var(--border);background:var(--bg-input);
+            color:var(--text);font-size:14px;resize:none;
+            min-height:44px;max-height:180px;outline:none;transition:.15s
+        }
+        .msg-input::placeholder{color:var(--text-muted)}
+        .msg-input:focus{border-color:var(--accent)}
+        .send-btn{
+            width:44px;height:44px;border-radius:var(--radius);border:none;
+            background:var(--accent);color:#fff;font-size:18px;
+            display:flex;align-items:center;justify-content:center;transition:.15s
+        }
+        .send-btn:hover{background:var(--accent-hover)}
+        .send-btn:disabled{opacity:.4;cursor:not-allowed}
+
+        /* ── Memory Panel (overlay) ─────────────────────────────────── */
+        .memory-overlay{
+            display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+            z-index:100;align-items:center;justify-content:center
+        }
+        .memory-overlay.active{display:flex}
+        .memory-panel{
+            width:480px;max-width:calc(100vw - 32px);max-height:70vh;
+            background:var(--bg-surface);border:1px solid var(--border);
+            border-radius:16px;display:flex;flex-direction:column;overflow:hidden
+        }
+        .memory-header{
+            padding:16px 20px;border-bottom:1px solid var(--border);
+            display:flex;align-items:center;justify-content:space-between
+        }
+        .memory-header h3{font-size:16px;font-weight:600}
+        .memory-close{
+            width:28px;height:28px;border:none;background:transparent;
+            color:var(--text-dim);font-size:18px;border-radius:var(--radius-sm)
+        }
+        .memory-close:hover{background:var(--bg-hover)}
+        .memory-body{flex:1;overflow-y:auto;padding:16px 20px}
+        .memory-empty{color:var(--text-muted);font-size:13px;text-align:center;padding:20px}
+        .memory-item{
+            display:flex;align-items:center;gap:8px;padding:8px 0;
+            border-bottom:1px solid var(--border)
+        }
+        .memory-item:last-child{border-bottom:none}
+        .memory-key{font-size:13px;font-weight:500;color:var(--accent);min-width:80px}
+        .memory-val{flex:1;font-size:13px;color:var(--text)}
+        .memory-del{
+            width:24px;height:24px;border:none;background:transparent;
+            color:var(--text-muted);font-size:12px;border-radius:4px
+        }
+        .memory-del:hover{background:rgba(239,68,68,.1);color:var(--red)}
+        .memory-add{
+            display:flex;gap:8px;padding:16px 20px;
+            border-top:1px solid var(--border)
+        }
+        .memory-add input{
+            flex:1;padding:8px 10px;border:1px solid var(--border);
+            border-radius:var(--radius-sm);background:var(--bg-input);
+            color:var(--text);font-size:13px;outline:none
+        }
+        .memory-add input:focus{border-color:var(--accent)}
+        .memory-add button{
+            padding:8px 14px;border:none;border-radius:var(--radius-sm);
+            background:var(--accent);color:#fff;font-size:13px
+        }
+
+        /* ── Responsive ────────────────────────────────────────────── */
+        @media(max-width:768px){
+            .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:50;transform:translateX(-100%)}
+            .sidebar.open{transform:translateX(0)}
+            .sidebar-close{display:block}
+            .menu-btn{display:flex;align-items:center;justify-content:center}
+            .mode-tabs{display:none}
+            .header-stats{display:none}
+            .msg-body{max-width:88%}
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════ LOGIN SCREEN ═══════════════════ -->
+<div class="login-screen" id="login-screen">
+    <div class="login-card">
+        <div class="login-logo">&#x1F916;</div>
+        <h1 class="login-title">RootCode AI</h1>
+        <p class="login-desc">智能编程助手 — 登录以开始对话</p>
+
+        <div class="login-tabs">
+            <button class="login-tab active" data-tab="login" id="tab-login">登录</button>
+            <button class="login-tab" data-tab="register" id="tab-register">注册</button>
+        </div>
+
+        <form class="login-form" id="login-form">
+            <input class="login-input" id="auth-username" type="text" placeholder="用户名" autocomplete="username" required>
+            <input class="login-input" id="auth-password" type="password" placeholder="密码 (至少6位)" autocomplete="current-password" required>
+            <div class="login-error" id="auth-error"></div>
+            <button type="submit" class="login-btn" id="auth-btn">登录</button>
+        </form>
+    </div>
+</div>
+
+<!-- ═══════════════════ MAIN APP ═══════════════════ -->
+<div class="app" id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <span class="sidebar-brand">RootCode AI</span>
+            <button class="sidebar-close" id="sidebar-close">&times;</button>
+        </div>
+        <button class="new-chat-btn" id="new-chat-btn">+ 新对话</button>
+        <div class="session-list" id="session-list"></div>
+        <div class="sidebar-footer">
+            <div class="user-avatar" id="user-avatar">?</div>
+            <div class="user-info">
+                <div class="user-name" id="user-name">-</div>
+                <div class="user-stats" id="user-stats">-</div>
+            </div>
+            <button class="logout-btn" id="logout-btn" title="退出登录">&#x23FB;</button>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+        <!-- Header -->
+        <header class="header">
+            <button class="menu-btn" id="menu-btn">&#9776;</button>
+            <div class="mode-tabs">
+                <button class="mode-tab active" data-mode="default">通用</button>
+                <button class="mode-tab" data-mode="code">写代码</button>
+                <button class="mode-tab" data-mode="learning">学习</button>
+                <button class="mode-tab" data-mode="review">审查</button>
+            </div>
+            <div class="header-spacer"></div>
+            <div class="header-stats">
+                <span>模型<span class="header-stat-val" id="stat-model">-</span></span>
+                <span>成本<span class="header-stat-val" id="stat-cost">$0</span></span>
+                <span>消息<span class="header-stat-val" id="stat-msgs">0</span></span>
+            </div>
+            <button class="memory-btn" id="memory-btn" title="记忆管理">&#x1F9E0;</button>
+        </header>
+
+        <!-- Chat -->
+        <div class="chat-area" id="chat-area">
+            <div class="welcome" id="welcome">
+                <div class="welcome-icon">&#x1F916;</div>
+                <h2>你好！我是RootCode AI助手</h2>
+                <p>我可以帮你写代码、改bug、解释代码、学习编程、审查代码。<br>你可以直接粘贴代码或描述问题~</p>
+                <div class="quick-actions">
+                    <button class="quick-action" data-msg="帮我写一个Python函数，计算斐波那契数列">&#x1F4DD; 写代码</button>
+                    <button class="quick-action" data-msg="帮我看看这段代码有什么bug：">&#x1F41B; 改bug</button>
+                    <button class="quick-action" data-msg="解释一下这段代码：">&#x1F4D6; 解释代码</button>
+                    <button class="quick-action" data-msg="帮我审查一下这段代码：">&#x1F50D; 代码审查</button>
+                    <button class="quick-action" data-msg="Python怎么学？">&#x1F4DA; 学习编程</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input -->
+        <div class="input-area">
+            <div class="input-row">
+                <div class="input-wrap">
+                    <textarea class="msg-input" id="msg-input" placeholder="输入消息... (Shift+Enter换行，Enter发送)" rows="1"></textarea>
+                </div>
+                <button class="send-btn" id="send-btn" title="发送">&#x27A4;</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════ MEMORY PANEL ═══════════════════ -->
+<div class="memory-overlay" id="memory-overlay">
+    <div class="memory-panel">
+        <div class="memory-header">
+            <h3>&#x1F9E0; 记忆管理</h3>
+            <button class="memory-close" id="memory-close">&times;</button>
+        </div>
+        <div class="memory-body" id="memory-body"></div>
+        <div class="memory-add">
+            <input type="text" id="memory-key-input" placeholder="键">
+            <input type="text" id="memory-val-input" placeholder="值">
+            <button id="memory-add-btn">添加</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const S = {
+    token: localStorage.getItem('rc_token') || '',
+    username: localStorage.getItem('rc_username') || '',
+    userId: localStorage.getItem('rc_user_id') || '',
+    sessionId: null,
+    mode: 'default',
+    sessions: [],
+    isLoading: false,
+};
+
+// ─── DOM refs ────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const loginScreen = $('login-screen');
+const app = $('app');
+const chatArea = $('chat-area');
+const msgInput = $('msg-input');
+const sendBtn = $('send-btn');
+const sessionList = $('session-list');
+const sidebar = $('sidebar');
+
+// ─── API helper ──────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (S.token) headers['Authorization'] = 'Bearer ' + S.token;
+    const res = await fetch(path, { ...opts, headers: { ...headers, ...opts.headers } });
+    return res.json();
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+let authMode = 'login';
+
+document.querySelectorAll('.login-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        authMode = btn.dataset.tab;
+        document.querySelectorAll('.login-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        $('auth-btn').textContent = authMode === 'login' ? '登录' : '注册';
+        $('auth-error').textContent = '';
+    });
+});
+
+$('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const username = $('auth-username').value.trim();
+    const password = $('auth-password').value;
+    if (!username || !password) { $('auth-error').textContent = '请填写用户名和密码'; return; }
+    if (authMode === 'register' && password.length < 6) { $('auth-error').textContent = '密码至少6位'; return; }
+
+    $('auth-btn').disabled = true;
+    $('auth-btn').textContent = '...';
+    try {
+        const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        const data = await api(endpoint, { method: 'POST', body: JSON.stringify({ username, password }) });
+        if (data.success) {
+            S.token = data.token;
+            S.username = data.username;
+            S.userId = data.user_id;
+            localStorage.setItem('rc_token', S.token);
+            localStorage.setItem('rc_username', S.username);
+            localStorage.setItem('rc_user_id', S.userId);
+            enterApp();
+        } else {
+            $('auth-error').textContent = data.error || '操作失败';
+        }
+    } catch (err) {
+        $('auth-error').textContent = '网络错误';
+    } finally {
+        $('auth-btn').disabled = false;
+        $('auth-btn').textContent = authMode === 'login' ? '登录' : '注册';
+    }
+});
+
+$('logout-btn').addEventListener('click', () => {
+    S.token = ''; S.username = ''; S.userId = ''; S.sessionId = null;
+    localStorage.removeItem('rc_token');
+    localStorage.removeItem('rc_username');
+    localStorage.removeItem('rc_user_id');
+    loginScreen.style.display = '';
+    app.classList.remove('active');
+});
+
+// ─── Enter App ───────────────────────────────────────────────────────────────
+async function enterApp() {
+    loginScreen.style.display = 'none';
+    app.classList.add('active');
+    $('user-name').textContent = S.username;
+    $('user-avatar').textContent = S.username.charAt(0).toUpperCase();
+    await loadSessions();
+    await loadStats();
+}
+
+// ─── Sessions ────────────────────────────────────────────────────────────────
+async function loadSessions() {
+    const data = await api('/api/sessions');
+    if (!data.success) return;
+    S.sessions = data.sessions || [];
+    renderSessionList();
+}
+
+function renderSessionList() {
+    sessionList.innerHTML = '';
+    if (!S.sessions.length) {
+        sessionList.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">暂无对话</div>';
+        return;
+    }
+    S.sessions.forEach(s => {
+        const el = document.createElement('div');
+        el.className = 'session-item' + (s.id === S.sessionId ? ' active' : '');
+        const date = new Date(s.updated_at * 1000);
+        const dateStr = `${date.getMonth()+1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2,'0')}`;
+        el.innerHTML = `
+            <div class="session-item-title">${escHtml(s.title)}</div>
+            <div class="session-item-meta">${s.message_count} 条消息 · ${dateStr}</div>
+            <button class="session-item-delete" data-sid="${s.id}" title="删除">&times;</button>
+        `;
+        el.addEventListener('click', e => {
+            if (e.target.classList.contains('session-item-delete')) return;
+            openSession(s.id);
+        });
+        el.querySelector('.session-item-delete').addEventListener('click', async e => {
+            e.stopPropagation();
+            if (!confirm('确定删除这个对话？')) return;
+            await api('/api/sessions/' + s.id, { method: 'DELETE' });
+            if (S.sessionId === s.id) { S.sessionId = null; showWelcome(); }
+            loadSessions();
+        });
+        sessionList.appendChild(el);
+    });
+}
+
+$('new-chat-btn').addEventListener('click', () => {
+    S.sessionId = null;
+    showWelcome();
+    renderSessionList();
+    closeSidebar();
+});
+
+async function openSession(sid) {
+    S.sessionId = sid;
+    const data = await api('/api/sessions/' + sid);
+    if (!data.success) return;
+    chatArea.innerHTML = '';
+    const welcome = $('welcome');
+    if (welcome) welcome.remove();
+    (data.session.messages || []).forEach(m => {
+        addMsgEl(m.role, m.content, m);
+    });
+    renderSessionList();
+    closeSidebar();
+    scrollToBottom();
+    updateSessionStats(data.session);
+}
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+async function loadStats() {
+    const data = await api('/api/stats');
+    if (!data.success) return;
+    $('user-stats').textContent = `${data.stats.total_sessions} 个对话 · ${data.stats.total_messages} 条消息`;
+}
+
+function updateSessionStats(session) {
+    $('stat-model').textContent = (session.model_used || '-').split('/').pop();
+    $('stat-cost').textContent = '$' + (session.total_cost || 0).toFixed(4);
+    $('stat-msgs').textContent = (session.messages || []).length;
+}
+
+// ─── Chat ────────────────────────────────────────────────────────────────────
+msgInput.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 180) + 'px';
+});
+
+msgInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+sendBtn.addEventListener('click', sendMessage);
+
+document.querySelectorAll('.quick-action').forEach(btn => {
+    btn.addEventListener('click', () => {
+        msgInput.value = btn.dataset.msg;
+        msgInput.focus();
+        sendMessage();
+    });
+});
+
+// Mode tabs
+document.querySelectorAll('.mode-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        S.mode = btn.dataset.mode;
+    });
+});
+
+async function sendMessage() {
+    const text = msgInput.value.trim();
+    if (!text || S.isLoading) return;
+
+    msgInput.value = '';
+    msgInput.style.height = 'auto';
+    removeWelcome();
+
+    addMsgEl('user', text);
+    scrollToBottom();
+
+    S.isLoading = true;
+    sendBtn.disabled = true;
+    const loadingId = addTyping();
+    scrollToBottom();
+
+    try {
+        const data = await api('/api/chat', {
+            method: 'POST',
+            body: JSON.stringify({
+                message: text,
+                session_id: S.sessionId,
+                mode: S.mode,
+            }),
+        });
+
+        removeTyping(loadingId);
+
+        if (data.success) {
+            S.sessionId = data.session_id;
+            addMsgEl('assistant', data.response, {
+                model: data.model,
+                complexity: data.complexity,
+                cost: data.cost,
+            });
+            $('stat-model').textContent = (data.model || '-').split('/').pop();
+            $('stat-cost').textContent = '$' + (data.total_cost || 0).toFixed(4);
+            loadSessions();
+            loadStats();
+        } else {
+            addError(data.error || '请求失败');
+        }
+    } catch (err) {
+        removeTyping(loadingId);
+        addError('网络错误，请检查连接');
+    } finally {
+        S.isLoading = false;
+        sendBtn.disabled = false;
+        scrollToBottom();
+    }
+}
+
+// ─── Message DOM helpers ─────────────────────────────────────────────────────
+function showWelcome() {
+    chatArea.innerHTML = `
+        <div class="welcome" id="welcome">
+            <div class="welcome-icon">&#x1F916;</div>
+            <h2>你好！我是RootCode AI助手</h2>
+            <p>我可以帮你写代码、改bug、解释代码、学习编程、审查代码。<br>你可以直接粘贴代码或描述问题~</p>
+            <div class="quick-actions">
+                <button class="quick-action" data-msg="帮我写一个Python函数，计算斐波那契数列">&#x1F4DD; 写代码</button>
+                <button class="quick-action" data-msg="帮我看看这段代码有什么bug：">&#x1F41B; 改bug</button>
+                <button class="quick-action" data-msg="解释一下这段代码：">&#x1F4D6; 解释代码</button>
+                <button class="quick-action" data-msg="帮我审查一下这段代码：">&#x1F50D; 代码审查</button>
+                <button class="quick-action" data-msg="Python怎么学？">&#x1F4DA; 学习编程</button>
+            </div>
+        </div>`;
+    document.querySelectorAll('.quick-action').forEach(btn => {
+        btn.addEventListener('click', () => {
+            msgInput.value = btn.dataset.msg;
+            msgInput.focus();
+            sendMessage();
+        });
+    });
+}
+
+function removeWelcome() {
+    const w = document.getElementById('welcome');
+    if (w) w.remove();
+}
+
+function addMsgEl(role, content, meta) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + role;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'msg-avatar';
+    avatar.textContent = role === 'user' ? '\u{1F464}' : '\u{1F916}';
+
+    const body = document.createElement('div');
+    body.className = 'msg-body';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.innerHTML = formatContent(content);
+    body.appendChild(bubble);
+
+    if (meta && role === 'assistant') {
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'msg-meta';
+        if (meta.model) metaDiv.innerHTML += `<span class="msg-tag m-model">${escHtml(meta.model.split('/').pop())}</span>`;
+        if (meta.complexity) metaDiv.innerHTML += `<span class="msg-tag m-cpx">${escHtml(meta.complexity)}</span>`;
+        if (meta.cost !== undefined) metaDiv.innerHTML += `<span class="msg-tag m-cost">$${Number(meta.cost).toFixed(4)}</span>`;
+        body.appendChild(metaDiv);
+    }
+
+    div.appendChild(avatar);
+    div.appendChild(body);
+    chatArea.appendChild(div);
+    scrollToBottom();
+}
+
+function formatContent(text) {
+    // code blocks
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+        const l = lang || 'code';
+        return `<div class="code-block"><div class="code-head"><span>${escHtml(l)}</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div><div class="code-body"><code>${escHtml(code.trim())}</code></div></div>`;
+    });
+    // inline code
+    text = text.replace(/`([^`]+)`/g, '<code style="background:var(--bg-surface);padding:1px 5px;border-radius:3px;font-size:13px">$1</code>');
+    // bold
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // newlines
+    text = text.replace(/\n/g, '<br>');
+    return text;
+}
+
+function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function copyCode(btn) {
+    const code = btn.closest('.code-block').querySelector('code').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = '已复制';
+        setTimeout(() => btn.textContent = '复制', 1500);
+    });
+}
+
+function addTyping() {
+    const div = document.createElement('div');
+    div.className = 'msg assistant';
+    const id = 't-' + Date.now();
+    div.id = id;
+    div.innerHTML = `
+        <div class="msg-avatar">&#x1F916;</div>
+        <div class="msg-body"><div class="msg-bubble"><div class="typing"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div></div>`;
+    chatArea.appendChild(div);
+    return id;
+}
+
+function removeTyping(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+}
+
+function addError(msg) {
+    const div = document.createElement('div');
+    div.className = 'error-toast';
+    div.textContent = msg;
+    chatArea.appendChild(div);
+    setTimeout(() => div.remove(), 5000);
+}
+
+function scrollToBottom() {
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+// ─── Sidebar mobile ─────────────────────────────────────────────────────────
+$('menu-btn').addEventListener('click', () => sidebar.classList.add('open'));
+$('sidebar-close').addEventListener('click', closeSidebar);
+function closeSidebar() { sidebar.classList.remove('open'); }
+
+// ─── Memory Panel ────────────────────────────────────────────────────────────
+$('memory-btn').addEventListener('click', async () => {
+    $('memory-overlay').classList.add('active');
+    await renderMemories();
+});
+$('memory-close').addEventListener('click', () => $('memory-overlay').classList.remove('active'));
+$('memory-overlay').addEventListener('click', e => {
+    if (e.target === $('memory-overlay')) $('memory-overlay').classList.remove('active');
+});
+
+async function renderMemories() {
+    const data = await api('/api/memory');
+    const body = $('memory-body');
+    if (!data.success || !Object.keys(data.memories || {}).length) {
+        body.innerHTML = '<div class="memory-empty">暂无记忆条目</div>';
+        return;
+    }
+    body.innerHTML = '';
+    for (const [key, entry] of Object.entries(data.memories)) {
+        const val = entry.value || '';
+        const item = document.createElement('div');
+        item.className = 'memory-item';
+        item.innerHTML = `<span class="memory-key">${escHtml(key)}</span><span class="memory-val">${escHtml(String(val))}</span><button class="memory-del" data-key="${escHtml(key)}">&times;</button>`;
+        item.querySelector('.memory-del').addEventListener('click', async () => {
+            await api('/api/memory/' + encodeURIComponent(key), { method: 'DELETE' });
+            renderMemories();
+        });
+        body.appendChild(item);
+    }
+}
+
+$('memory-add-btn').addEventListener('click', async () => {
+    const key = $('memory-key-input').value.trim();
+    const val = $('memory-val-input').value.trim();
+    if (!key) return;
+    await api('/api/memory', { method: 'POST', body: JSON.stringify({ key, value: val }) });
+    $('memory-key-input').value = '';
+    $('memory-val-input').value = '';
+    renderMemories();
+});
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+(async () => {
+    if (S.token) {
+        // Verify token is still valid
+        const data = await api('/api/auth/me');
+        if (data.success) {
+            enterApp();
+            return;
+        }
+        // Token invalid, clear it
+        S.token = '';
+        localStorage.removeItem('rc_token');
+    }
+    // Check if any users exist
+    const status = await api('/api/auth/status');
+    if (status.success && !status.has_users) {
+        // First run: show register tab
+        authMode = 'register';
+        document.querySelectorAll('.login-tab').forEach(b => b.classList.remove('active'));
+        $('tab-register').classList.add('active');
+        $('auth-btn').textContent = '注册';
+        $('login-desc').textContent = '首次使用，请注册一个账户';
+    }
+})();
+</script>
+</body>
+</html>

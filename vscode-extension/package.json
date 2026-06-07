@@ -1,0 +1,124 @@
+{
+  "name": "codex-local",
+  "version": "0.1.0",
+  "displayName": "Codex-Local",
+  "description": "Autonomous AI coding assistant with Codex-Local backend. Provides inline completions and full AI agent capabilities.",
+  "publisher": "codex-local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "AI",
+    "Machine Learning"
+  ],
+  "activationEvents": [
+    "onLanguage",
+    "onCommand:codexLocal.start",
+    "onCommand:codexLocal.stop",
+    "onCommand:codexLocal.status"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codexLocal.start",
+        "title": "Codex-Local: Start Server"
+      },
+      {
+        "command": "codexLocal.stop",
+        "title": "Codex-Local: Stop Server"
+      },
+      {
+        "command": "codexLocal.status",
+        "title": "Codex-Local: Status"
+      },
+      {
+        "command": "codexLocal.chat",
+        "title": "Codex-Local: Chat"
+      },
+      {
+        "command": "codexLocal.runTask",
+        "title": "Codex-Local: Run Task..."
+      },
+      {
+        "command": "codexLocal.restartBridge",
+        "title": "Codex-Local: Restart Bridge"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "codexLocal.chat",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Codex-Local",
+      "properties": {
+        "codexLocal.bridgeUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8787",
+          "description": "Codex-Local Bridge server URL"
+        },
+        "codexLocal.model": {
+          "type": "string",
+          "default": "deepseek-chat",
+          "description": "Model to use (deepseek-chat, mimo-v2.5, etc.)"
+        },
+        "codexLocal.provider": {
+          "type": "string",
+          "default": "deepseek",
+          "description": "Provider (deepseek, xiaomi, ollama, anthropic)"
+        },
+        "codexLocal.maxTokens": {
+          "type": "number",
+          "default": 200,
+          "description": "Max completion tokens"
+        },
+        "codexLocal.inlineEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inline code completions"
+        },
+        "codexLocal.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start bridge server on extension activation"
+        }
+      }
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codexLocal.runTask",
+          "when": "editorTextFocus",
+          "group": "navigation@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codexLocal.chat",
+          "when": "false"
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "vscode": "1.85.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "1.85.0",
+    "typescript": "^5.0.0",
+    "esbuild": "^0.20.0",
+    "vscode-test": "^2.0.0"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --platform=node --external:vscode --external:fs --external:path --external:http --external:https --external:os --external:net --external:cluster --external:node:fs",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --platform:node --external:vscode --watch"
+  }
+}

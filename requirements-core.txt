@@ -1,0 +1,6 @@
+# Codex-Local Core Dependencies
+# Minimal run: pip install -r requirements-core.txt
+
+requests>=2.28.0
+gitpython>=3.1.0
+pytest>=7.0.0
