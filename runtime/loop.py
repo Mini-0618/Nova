@@ -838,6 +838,7 @@ class CodexLoop:
         self._current_session: Optional[Session] = None
         self._iteration = 0
         self._last_save = time.time()
+        self._key_decisions: List[Dict[str, Any]] = []  # Track tool calls for memory
         self._listeners: List[Callable] = []
 
         # Memory system
@@ -870,6 +871,7 @@ class CodexLoop:
         self._iteration = 0
         self.start_time = time.time()
         self.error = None
+        self._key_decisions = []
 
         # Smart routing: automatically select the optimal model
         if self.config.enable_smart_routing:
@@ -1082,6 +1084,13 @@ class CodexLoop:
                         "timestamp": int(time.time()),
                     })
 
+                    # Track key decisions for memory
+                    self._key_decisions.append({
+                        "iteration": self._iteration,
+                        "tool": action.tool_name,
+                        "success": result.get("success") if isinstance(result, dict) else False,
+                    })
+
                     # Memory: Store important tool results
                     if self.memory_mgr and self.config.auto_remember:
                         try:
@@ -1170,17 +1179,41 @@ class CodexLoop:
             self.session_mgr.update_session(self._current_session)
             self.status = self.status or "finished"
 
-            # Memory system: save session summary and end session
+            # Memory system: save session summary with key_decisions and end session
             if self.memory_mgr and self.config.auto_remember:
                 try:
-                    # Store session summary
-                    session_summary = {
+                    success = not self.error and "error" not in (self.status or "").lower()
+                    duration_sec = int(time.time() - self.start_time) if self.start_time else 0
+
+                    # Build task summary for memory
+                    task_summary = {
                         "task": task,
+                        "success": success,
                         "status": self.status,
                         "iterations": self._iteration,
-                        "duration_sec": int(time.time() - self.start_time) if self.start_time else 0,
+                        "duration_sec": duration_sec,
                         "error": self.error,
                     }
+
+                    # Summarize key decisions (tool calls made)
+                    tools_used = [d["tool"] for d in self._key_decisions]
+                    tool_summary = ", ".join(tools_used) if tools_used else "none"
+                    failed_tools = [d["tool"] for d in self._key_decisions if not d.get("success")]
+                    key_decisions_summary = {
+                        "tools_called": tools_used,
+                        "total_tool_calls": len(self._key_decisions),
+                        "failed_tools": failed_tools,
+                    }
+
+                    # Build memory content
+                    memory_content = (
+                        f"Task: {task[:200]}\n"
+                        f"Result: {'success' if success else 'failure'}\n"
+                        f"Iterations: {self._iteration}, Duration: {duration_sec}s\n"
+                        f"Tools used: {tool_summary}"
+                    )
+                    if self.error:
+                        memory_content += f"\nError: {self.error[:200]}"
 
                     # Determine importance based on outcome
                     importance = 0.5
@@ -1189,12 +1222,22 @@ class CodexLoop:
                     elif self._iteration > 10:
                         importance = 0.6  # Complex tasks
 
+                    # Store as episodic memory with structured metadata
                     self.memory_mgr.remember(
-                        f"Session completed: {json.dumps(session_summary)}",
+                        memory_content,
                         importance=importance,
-                        tags=["session", "outcome"],
-                        title=f"Session: {task[:50]}"
+                        tags=["session", "outcome", "success" if success else "failure"],
+                        title=f"Task: {task[:50]}"
                     )
+
+                    # Also learn from failures as semantic knowledge
+                    if failed_tools:
+                        self.memory_mgr.learn(
+                            f"Tools that failed during task '{task[:100]}': {', '.join(failed_tools)}",
+                            tags=["tool_failure", "learning"],
+                            title=f"Tool failures: {', '.join(failed_tools)}",
+                            importance=0.6,
+                        )
 
                     # End session and promote important working memories
                     self.memory_mgr.end_session(promote_important=True)
