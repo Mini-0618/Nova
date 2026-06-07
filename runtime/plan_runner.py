@@ -160,9 +160,9 @@ Requirements:
             )
 
             loop = CodexLoop(config)
-            result = await loop.run(prompt)
+            result = await loop.run_task(prompt)
 
-            task.result = result.get('response', 'No response')
+            task.result = result if isinstance(result, str) else str(result)
             task.status = "completed"
 
         except Exception as e:
@@ -374,14 +374,20 @@ Output format:
                 workspace=str(self.workspace),
             )
             loop = CodexLoop(config)
-            result = await loop.run(prompt)
+            result = await loop.run_task(prompt)
 
-            response = result.get('response', '')
-            # Extract JSON from response
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', response)
-            if json_match:
-                plan_data = json.loads(json_match.group())
+            response = result if isinstance(result, str) else str(result)
+            # Extract JSON from response — use raw_decode for robustness
+            plan_data = None
+            decoder = json.JSONDecoder()
+            for start_idx in range(len(response)):
+                if response[start_idx] == '{':
+                    try:
+                        plan_data, _ = decoder.raw_decode(response, start_idx)
+                        break
+                    except json.JSONDecodeError:
+                        continue
+            if plan_data:
                 plan_data['id'] = f"plan-{int(time.time())}"
                 plan_data['created_at'] = datetime.now().isoformat()
 
