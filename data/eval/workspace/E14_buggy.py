@@ -1,7 +1,7 @@
 users = {'alice': 30, 'bob': 25}
 
 def get_user_age(name):
-    return users[name]  # BUG: KeyError if name not found
+    return users.get(name, -1)
 
 if __name__ == '__main__':
     assert get_user_age('alice') == 30

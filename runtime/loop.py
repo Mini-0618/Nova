@@ -91,7 +91,7 @@ class LoopConfig:
     max_output_tokens: int = 2048
     temperature: float = 0.7
     model: str = "deepseek-chat"
-    provider: str = "deepseek"
+    provider: str = ""  # auto-detect from env
     system_prompt: str = SYSTEM_PROMPT
     # Multi-round reasoning settings
     enable_multi_round_reasoning: bool = False
@@ -108,6 +108,8 @@ class LoopConfig:
     memory_context_max: int = 5  # Max memories to inject into context
     auto_remember: bool = True  # Auto-remember important interactions
     memory_importance_threshold: float = 0.6  # Threshold for auto-remembering
+    # Workspace settings
+    workspace: str = ""  # Working directory for file operations
 
 
 # ─── LLM Interface ───────────────────────────────────────────────────────
@@ -178,6 +180,37 @@ def _build_messages(task: str, history: List[Dict], system_prompt: str) -> List[
     return [{"role": "system", "content": system_prompt}] + recent
 
 
+def _resolve_api_url(provider: str = "") -> str:
+    """Resolve API base URL from provider name or env override."""
+    # Check env override first (OPENAI_BASE_URL style)
+    for var in ["CODEX_API_URL", "OPENAI_BASE_URL"]:
+        url = os.environ.get(var)
+        if url:
+            return url.rstrip("/") + "/chat/completions"
+
+    providers = {
+        "deepseek": "https://api.deepseek.com/chat/completions",
+        "openai": "https://api.openai.com/v1/chat/completions",
+        "xiaomi": "https://api.xiaomi.com/v1/chat/completions",
+        "ollama": "http://localhost:11434/v1/chat/completions",
+    }
+    if not provider:
+        # Auto-detect: if OPENAI_BASE_URL is set, use openai
+        if os.environ.get("OPENAI_BASE_URL"):
+            return os.environ["OPENAI_BASE_URL"].rstrip("/") + "/chat/completions"
+        return providers["deepseek"]
+    return providers.get(provider, providers["deepseek"])
+
+
+def _resolve_api_key() -> str:
+    """Resolve API key from env, checking multiple sources."""
+    for var in ["CODEX_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "XIAOMIMIMO_API_KEY"]:
+        key = os.environ.get(var)
+        if key:
+            return key
+    return ""
+
+
 async def _call_llm_async(messages: List[Dict], config: LoopConfig,
                           api_key: str, provider: str, model: str) -> Dict[str, Any]:
     """Call the LLM directly via Chat Completions API with retry logic."""
@@ -229,13 +262,13 @@ async def _call_llm_async(messages: List[Dict], config: LoopConfig,
     # Use all tools — no filtering, API handles what it needs
     body["tools"] = _convert_tools_to_openai_format(TOOL_DEFINITIONS)
 
-    # Call DeepSeek directly with retry using requests session for reliability
+    # Call LLM directly with retry using requests session for reliability
     import requests
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
 
     session = requests.Session()
-    deepseek_url = "https://api.deepseek.com/chat/completions"
+    api_url = _resolve_api_url(provider)
     adapter = HTTPAdapter(
         max_retries=Retry(total=10, backoff_factor=2.0, status_forcelist=[429, 500, 502, 503, 504]),
         pool_connections=1,
@@ -250,7 +283,7 @@ async def _call_llm_async(messages: List[Dict], config: LoopConfig,
     for attempt in range(1, max_retries + 1):
         try:
             resp = session.post(
-                deepseek_url,
+                api_url,
                 json=body,
                 headers={
                     "Content-Type": "application/json",
@@ -659,7 +692,7 @@ class CodexLoop:
 
                 response = await _call_llm_async(
                     messages, self.config,
-                    os.environ.get("CODEX_API_KEY") or os.environ.get("DEEPSEEK_API_KEY") or "",
+                    _resolve_api_key(),
                     self.config.provider,
                     self.config.model,
                 )

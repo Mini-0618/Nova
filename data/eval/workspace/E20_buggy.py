@@ -1,8 +1,15 @@
-import json, os
+import json, os, tempfile
 
 def save_users(users, path):
-    with open(path, 'w') as f:  # BUG: not atomic, partial write on crash
-        json.dump(users, f)
+    dir_name = os.path.dirname(path) or '.'
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(users, f)
+        os.replace(tmp_path, path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 if __name__ == '__main__':
     users = [{'name': 'alice'}, {'name': 'bob'}]

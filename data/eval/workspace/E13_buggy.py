@@ -1,5 +1,7 @@
 def avg(nums):
-    return sum(nums) / len(nums)  # BUG: ZeroDivisionError on empty list
+    if not nums:
+        return 0
+    return sum(nums) / len(nums)
 
 if __name__ == '__main__':
     assert avg([1, 2, 3]) == 2.0

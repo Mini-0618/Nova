@@ -120,7 +120,7 @@ Rules:
 - Output ONLY the JSON object, no other text"""
 
     try:
-        config = LoopConfig(model=model, max_iterations=3, workspace=str(PROJECT_ROOT))
+        config = LoopConfig(model=model, max_iterations=3)
         loop = CodexLoop(config)
         result = await loop.run_task(prompt)
 
@@ -179,7 +179,7 @@ After fixing, report:
 - Whether the test passes"""
 
     try:
-        config = LoopConfig(model=model, max_iterations=10, workspace=str(PROJECT_ROOT))
+        config = LoopConfig(model=model, max_iterations=10)
         loop = CodexLoop(config)
         result = await loop.run_task(prompt)
         return result
@@ -251,7 +251,7 @@ async def main():
     parser = argparse.ArgumentParser(description="Codex-Local Self-Improvement Loop")
     parser.add_argument("--max-cycles", type=int, default=3, help="Maximum improvement cycles")
     parser.add_argument("--category", help="Focus on this category")
-    parser.add_argument("--model", default="deepseek-chat", help="Model to use")
+    parser.add_argument("--model", default="mimo-v2.5", help="Model to use (or 'offline' for no LLM)")
     parser.add_argument("--dry-run", action="store_true", help="Show plan without executing")
     args = parser.parse_args()
 
@@ -271,10 +271,14 @@ async def main():
         if args.category:
             tasks = [t for t in tasks if t["category"] == args.category]
 
-        # Run eval (offline mode for now — can switch to LLM mode)
+        # Run eval — use LLM if model specified, otherwise offline
         results = []
+        use_llm = args.model and args.model != "offline"
         for task in tasks:
-            result = eval_task.run_task_subprocess(task)
+            if use_llm:
+                result = await eval_task.run_task_with_loop(task, model=args.model)
+            else:
+                result = eval_task.run_task_subprocess(task)
             results.append(result)
 
         report = eval_task.build_report(results)
