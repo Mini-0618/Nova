@@ -280,9 +280,13 @@ def _resolve_api_key() -> str:
 
 
 async def _call_llm_async(messages: List[Dict], config: LoopConfig,
-                          api_key: str, provider: str, model: str) -> Dict[str, Any]:
-    """Call the LLM directly via Chat Completions API with retry logic."""
+                          api_key: str, provider: str, model: str,
+                          stream_callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+    """Call the LLM directly via Chat Completions API with retry logic.
 
+    Args:
+        stream_callback: Optional callback for streaming chunks. Each chunk text is passed to it.
+    """
     # Build Chat Completions body from message history
     chat_messages = []
     for msg in messages:
@@ -295,7 +299,6 @@ async def _call_llm_async(messages: List[Dict], config: LoopConfig,
             chat_messages.append({"role": "user", "content": content})
         elif role == "assistant":
             if msg.get("tool_calls"):
-                # Assistant message with tool calls
                 tool_calls = []
                 for tc in msg["tool_calls"]:
                     fn = tc.get("function", {})
@@ -311,23 +314,21 @@ async def _call_llm_async(messages: List[Dict], config: LoopConfig,
             else:
                 chat_messages.append({"role": "assistant", "content": content or ""})
         elif role == "tool":
-            # Tool result message
             chat_messages.append({
                 "role": "tool",
                 "tool_call_id": msg.get("tool_call_id", "unknown"),
                 "content": content,
             })
 
-    # Only include tools if not a tool result message
+    use_stream = config.stream and stream_callback is not None
+
     body = {
         "model": model,
         "messages": chat_messages,
-        "stream": False,
+        "stream": use_stream,
         "temperature": config.temperature,
         "max_tokens": config.max_output_tokens,
     }
-    # Always include tools so model can call them in every iteration
-    # Use all tools — no filtering, API handles what it needs
     body["tools"] = _convert_tools_to_openai_format(TOOL_DEFINITIONS)
 
     # Call LLM directly with retry using requests session for reliability
@@ -357,9 +358,10 @@ async def _call_llm_async(messages: List[Dict], config: LoopConfig,
                     "Content-Type": "application/json",
                     "Authorization": "Bearer " + api_key,
                 },
-                timeout=(10, 120),  # (connect, read)
+                timeout=(10, 300 if use_stream else 120),  # longer timeout for streaming
+                stream=use_stream,
             )
-            # Check HTTP status before attempting to parse JSON
+            # Check HTTP status before attempting to parse
             if resp.status_code != 200:
                 err_body = resp.text or "no body"
                 status = resp.status_code
@@ -375,19 +377,22 @@ async def _call_llm_async(messages: List[Dict], config: LoopConfig,
                     continue
                 else:
                     raise RuntimeError(f"LLM API error {status}: {err_body[:1000]}")
-            try:
-                result = resp.json()
-            except json.JSONDecodeError as e:
-                raise RuntimeError(f"LLM API returned non-JSON response (status {resp.status_code}): {resp.text[:500]}") from e
-            choices = result.get("choices")
-            if not choices or not isinstance(choices, list) or len(choices) == 0:
-                error_msg = result.get("error", {}).get("message", "Empty choices in response")
-                raise RuntimeError(f"LLM API returned invalid response: {error_msg}")
-            return _convert_chat_to_response_format(result, model)
+
+            if use_stream:
+                return _parse_sse_stream(resp, model, stream_callback)
+            else:
+                try:
+                    result = resp.json()
+                except json.JSONDecodeError as e:
+                    raise RuntimeError(f"LLM API returned non-JSON response (status {resp.status_code}): {resp.text[:500]}") from e
+                choices = result.get("choices")
+                if not choices or not isinstance(choices, list) or len(choices) == 0:
+                    error_msg = result.get("error", {}).get("message", "Empty choices in response")
+                    raise RuntimeError(f"LLM API returned invalid response: {error_msg}")
+                return _convert_chat_to_response_format(result, model)
 
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
                 requests.exceptions.RequestException) as e:
-            # Network-level transient errors — retry with backoff
             if attempt < max_retries:
                 delay = base_delay * (2 ** (attempt - 1))
                 import random
@@ -398,8 +403,121 @@ async def _call_llm_async(messages: List[Dict], config: LoopConfig,
             else:
                 raise RuntimeError(f"LLM API connection failed after {max_retries} retries: {e}") from e
 
-    # If we exhausted retries, raise the last captured exception
     raise last_exception or RuntimeError("LLM API call failed after all retries")
+
+
+def _parse_sse_stream(resp, model: str, callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+    """Parse an SSE streaming response and accumulate into standard response format.
+
+    Args:
+        resp: requests Response with stream=True
+        model: Model name for the response
+        callback: Optional callback called with each text chunk
+
+    Returns:
+        Response dict in the same format as _convert_chat_to_response_format
+    """
+    import uuid as _uuid
+
+    accumulated_text = ""
+    tool_calls_map: Dict[int, Dict] = {}  # index -> {id, name, arguments}
+    finish_reason = None
+    prompt_tokens = 0
+    completion_tokens = 0
+
+    for line in resp.iter_lines(decode_unicode=True):
+        if not line:
+            continue
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        data_str = line[len("data:"):].strip()
+        if data_str == "[DONE]":
+            break
+        try:
+            chunk = json.loads(data_str)
+        except json.JSONDecodeError:
+            continue
+
+        # Extract usage if present (some providers include it in the last chunk)
+        chunk_usage = chunk.get("usage")
+        if chunk_usage:
+            prompt_tokens = chunk_usage.get("prompt_tokens", prompt_tokens)
+            completion_tokens = chunk_usage.get("completion_tokens", completion_tokens)
+
+        choices = chunk.get("choices", [])
+        if not choices:
+            continue
+
+        delta = choices[0].get("delta", {})
+        finish_reason = choices[0].get("finish_reason") or finish_reason
+
+        # Accumulate text content
+        content_delta = delta.get("content", "")
+        if content_delta:
+            accumulated_text += content_delta
+            if callback:
+                try:
+                    callback(content_delta)
+                except Exception:
+                    pass
+
+        # Accumulate tool calls
+        tc_delta = delta.get("tool_calls", [])
+        for tc in tc_delta:
+            idx = tc.get("index", 0)
+            if idx not in tool_calls_map:
+                tool_calls_map[idx] = {
+                    "id": tc.get("id", ""),
+                    "name": "",
+                    "arguments": "",
+                }
+            if tc.get("id"):
+                tool_calls_map[idx]["id"] = tc["id"]
+            fn = tc.get("function", {})
+            if fn.get("name"):
+                tool_calls_map[idx]["name"] = fn["name"]
+            if fn.get("arguments"):
+                tool_calls_map[idx]["arguments"] += fn["arguments"]
+
+    # Build output in standard format
+    output = []
+    if accumulated_text:
+        output.append({
+            "id": "msg_" + _uuid.uuid4().hex,
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": accumulated_text, "annotations": []}],
+        })
+    for idx in sorted(tool_calls_map.keys()):
+        tc = tool_calls_map[idx]
+        output.append({
+            "id": "fc_" + _uuid.uuid4().hex,
+            "type": "function_call",
+            "status": "completed",
+            "call_id": tc["id"] or f"call_{_uuid.uuid4().hex[:8]}",
+            "name": tc["name"],
+            "arguments": tc["arguments"] or "{}",
+        })
+
+    # Estimate token usage if not provided by the API
+    if completion_tokens == 0 and accumulated_text:
+        completion_tokens = _estimate_tokens(accumulated_text)
+
+    return {
+        "id": "resp_" + _uuid.uuid4().hex,
+        "object": "response",
+        "created_at": int(time.time()),
+        "status": "completed",
+        "model": model,
+        "output": output,
+        "usage": {
+            "input_tokens": prompt_tokens,
+            "output_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+    }
 
 
 def _convert_chat_to_response_format(chat_resp: Dict, model: str) -> Dict:
@@ -825,11 +943,21 @@ class CodexLoop:
                     "action": "calling_llm",
                 })
 
+                # Build stream callback if streaming is enabled
+                _stream_cb = None
+                if self.config.stream:
+                    def _stream_cb(chunk: str):
+                        self._notify("stream_chunk", {
+                            "iteration": self._iteration,
+                            "chunk": chunk,
+                        })
+
                 response = await _call_llm_async(
                     messages, self.config,
                     _resolve_api_key(),
                     self.config.provider,
                     self.config.model,
+                    stream_callback=_stream_cb,
                 )
 
                 usage = response.get("usage", {})
