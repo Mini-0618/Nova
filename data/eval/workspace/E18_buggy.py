@@ -6,9 +6,7 @@ _lock = threading.Lock()
 def increment_counter():
     global counter
     with _lock:
-        temp = counter
-        temp += 1
-        counter = temp
+        counter += 1
 
 if __name__ == '__main__':
     threads = [threading.Thread(target=increment_counter) for _ in range(100)]

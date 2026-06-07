@@ -1,15 +1,12 @@
-import json, os, tempfile
+import json, os
 
 def save_users(users, path):
-    dir_name = os.path.dirname(path) or '.'
-    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
-    try:
-        with os.fdopen(fd, 'w') as f:
-            json.dump(users, f)
-        os.replace(tmp_path, path)
-    except BaseException:
-        os.unlink(tmp_path)
-        raise
+    tmp_path = path + '.tmp'
+    with open(tmp_path, 'w') as f:
+        json.dump(users, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
 
 if __name__ == '__main__':
     users = [{'name': 'alice'}, {'name': 'bob'}]

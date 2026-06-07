@@ -1,7 +1,7 @@
 people = [{'name': 'alice', 'age': 30}, {'name': 'bob', 'age': 20}, {'name': 'carol', 'age': 25}]
 
 def sort_by_age(ppl):
-    return sorted(ppl, key=lambda p: p['age'])  # sorts by age ascending
+    return sorted(ppl, key=lambda p: p['age'])
 
 if __name__ == '__main__':
     result = sort_by_age(people)

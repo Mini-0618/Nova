@@ -1421,13 +1421,18 @@ class ToolExecutor:
     def bash(self, command: str, timeout: int = 30, cwd: Optional[str] = None) -> dict:
         try:
             work_dir = self._resolve_path(cwd) if cwd else self.workspace_root
+            # Ensure Python is in PATH for Windows subprocess
+            env = {**os.environ, "TERM": "xterm-256color"}
+            py_dir = os.path.dirname(sys.executable)
+            if py_dir and py_dir not in env.get("PATH", ""):
+                env["PATH"] = py_dir + os.pathsep + env.get("PATH", "")
             proc = subprocess.run(
                 command,
                 shell=True,
                 capture_output=True,
                 timeout=timeout,
                 cwd=str(work_dir),
-                env={**os.environ, "TERM": "xterm-256color"},
+                env=env,
             )
             return {
                 "success": proc.returncode == 0,

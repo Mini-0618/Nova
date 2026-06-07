@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-06-07 14:46:07",
+  "total_tasks": 1,
+  "passed": 1,
+  "failed": 0,
+  "pass_rate": 100.0,
+  "by_category": {
+    "bugfix": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "pass_rate": 100.0
+    }
+  },
+  "by_difficulty": {
+    "easy": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "pass_rate": 100.0
+    }
+  },
+  "tool_call_accuracy": 0,
+  "regression_rate": 0.0,
+  "false_change_rate": 0.0,
+  "human_intervention_rate": 0.0,
+  "results": [
+    {
+      "task_id": "E11",
+      "category": "bugfix",
+      "difficulty": "easy",
+      "title": "Fix off-by-one error",
+      "passed": true,
+      "score": 1,
+      "error": null,
+      "duration_s": 53.97,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "needed_human": false,
+      "introduced_regression": false,
+      "changed_wrong_files": false,
+      "patch_too_large": false,
+      "details": "all checks passed"
+    }
+  ]
+}

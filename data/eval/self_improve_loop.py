@@ -93,9 +93,9 @@ def get_relevant_lessons(task_category: str, task_title: str, lessons: List[Less
     return relevant[:5]  # Top 5
 
 
-async def analyze_failure(task: Dict[str, Any], eval_result: Dict[str, Any], model: str = "deepseek-chat") -> Optional[Lesson]:
+async def analyze_failure(task: Dict[str, Any], eval_result: Dict[str, Any], model: str = "mimo-v2.5") -> Optional[Lesson]:
     """Use LLM to analyze a failure and extract a lesson."""
-    from runtime.loop import CodexLoop, LoopConfig
+    from runtime.loop import _call_llm_async, _resolve_api_key, _resolve_api_url, LoopConfig
 
     prompt = f"""Analyze this failed task and extract a reusable lesson.
 
@@ -105,31 +105,39 @@ Task description: {task['task']}
 Error: {eval_result.get('error', 'none')}
 Details: {eval_result.get('details', 'none')}
 
-Output a JSON object with:
-{{
-  "pattern": "What went wrong (one sentence)",
-  "fix": "How to fix it (one sentence)",
-  "confidence": 0.0 to 1.0
-}}
-
-Rules:
-- Be specific, not generic
-- Focus on the actual error, not the task description
-- The pattern should be recognizable in future similar failures
-- The fix should be actionable
-- Output ONLY the JSON object, no other text"""
+Output ONLY a JSON object (no markdown, no explanation):
+{{"pattern": "What went wrong", "fix": "How to fix it", "confidence": 0.8}}"""
 
     try:
-        config = LoopConfig(model=model, max_iterations=3)
-        loop = CodexLoop(config)
-        result = await loop.run_task(prompt)
+        config = LoopConfig(model=model, max_iterations=1)
+        messages = [
+            {"role": "system", "content": "You extract reusable lessons from code failures. Output only valid JSON."},
+            {"role": "user", "content": prompt},
+        ]
+        api_key = _resolve_api_key()
+        result = await _call_llm_async(messages, config, api_key, "", model)
 
-        # Parse the JSON from result
+        # Extract content from response
+        content = ""
+        choices = result.get("choices", [])
+        if choices:
+            content = choices[0].get("message", {}).get("content", "")
+        elif result.get("output"):
+            for item in result["output"]:
+                if item.get("type") == "message":
+                    for c in item.get("content", []):
+                        if c.get("type") == "output_text":
+                            content += c.get("text", "")
+
+        if not content:
+            return None
+
+        # Parse JSON from content
         decoder = json.JSONDecoder()
-        for start_idx in range(len(result)):
-            if result[start_idx] == '{':
+        for start_idx in range(len(content)):
+            if content[start_idx] == '{':
                 try:
-                    data, _ = decoder.raw_decode(result, start_idx)
+                    data, _ = decoder.raw_decode(content, start_idx)
                     return Lesson(
                         id=f"lesson-{int(time.time())}",
                         pattern=data.get("pattern", "unknown"),

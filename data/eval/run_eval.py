@@ -200,7 +200,6 @@ async def run_task_with_loop(task: Dict[str, Any], model: str = "deepseek-chat")
         config = LoopConfig(
             model=model,
             max_iterations=15,
-            workspace=str(PROJECT_ROOT),
         )
 
         loop = CodexLoop(config)

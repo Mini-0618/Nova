@@ -63,19 +63,30 @@ class Action:
 
 # ─── System Prompt ─────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are an autonomous coding agent. You MUST take action using tools.
+SYSTEM_PROMPT = """You are an autonomous coding agent. You complete tasks by calling tools directly.
 
-CRITICAL:
-- Your entire response must be ONLY a tool_calls JSON object — no text before or after
-- NEVER explain what you are doing in text
-- NEVER say "I'll", "Let me", "I will", "Here's what I did"
-- The moment you receive tool results, immediately call the next tool
-- Stop and give final text answer ONLY when task is 100% complete and no more tools are needed
+TOOL USAGE — use the RIGHT tool for each job:
+- Read(file_path) — read a file
+- Write(file_path, content) — CREATE a file. Use this for new files.
+- Edit(file_path, old_string, new_string) — modify an existing file
+- Bash(command) — RUN a command. Use this to execute scripts, run tests, verify output.
+- sandbox_exec — ONLY for quick code snippets, NOT for file operations
 
-STOP condition: task finished, all steps done, now give the result
-CONTINUE condition: anything remains to do, even a single step
+IMPORTANT: sandbox_exec runs in an isolated directory. NEVER use it for tasks that create files.
+Always use Write + Bash for file creation and execution.
 
-Never break: your response must be a tool_call JSON, never free text."""
+WORKFLOW:
+1. Read files to understand current state
+2. Write or Edit to make changes
+3. Bash to run/verify
+4. If it fails, read the error, fix, retry once
+
+RULES:
+- Create files with Write, then run with Bash("python filename")
+- Run tests with Bash("python -m pytest ...")
+- Check output with Read or Bash
+- Never describe what you would do — just do it
+- Stop when the task is verified complete"""
 
 
 # ─── LoopConfig ───────────────────────────────────────────────────────────
@@ -87,7 +98,7 @@ class LoopConfig:
     auto_save_interval_sec: int = 30
     trust_code_execution: bool = True
     trust_file_writes: bool = True
-    trust_shell_commands: bool = False
+    trust_shell_commands: bool = True
     max_output_tokens: int = 2048
     temperature: float = 0.7
     model: str = "deepseek-chat"
@@ -521,7 +532,16 @@ class DecisionEngine:
                     # If text looks like a tool_call description rather than a real answer,
                     # treat it as needing another iteration
                     stripped = text.strip()
-                    if stripped.startswith("<") or "tool_calls" in stripped or "invoke name=" in stripped:
+                    # Detect "describing instead of doing" patterns
+                    describe_patterns = [
+                        stripped.startswith("<"),
+                        "tool_calls" in stripped,
+                        "invoke name=" in stripped,
+                        stripped.lower().startswith(("i'll ", "i will ", "let me ", "here's ", "first, ", "to fix")),
+                        "```python" in stripped and len(stripped) > 200,
+                        "i would " in stripped.lower() and "tool" in stripped.lower(),
+                    ]
+                    if any(describe_patterns):
                         # Model is describing tools in text instead of using tool_calls — force continue
                         self._suppressed_response = stripped
                         return Action(
