@@ -44,6 +44,7 @@ class PlanTask:
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     duration_s: float = 0.0
+    depends_on: List[str] = field(default_factory=list)  # task IDs this task depends on
 
 
 @dataclass
@@ -176,8 +177,54 @@ Requirements:
 
         return task
 
+    @staticmethod
+    def topological_sort(tasks: List[PlanTask]) -> List[PlanTask]:
+        """Sort tasks by dependency order using Kahn's algorithm.
+
+        Returns tasks in topological order. Raises ValueError on circular deps.
+        """
+        task_map = {t.id: t for t in tasks}
+        # Build adjacency: for each task, which tasks depend on it
+        in_degree = {t.id: 0 for t in tasks}
+        dependents = {t.id: [] for t in tasks}  # task_id -> list of tasks that depend on it
+
+        for t in tasks:
+            for dep_id in t.depends_on:
+                if dep_id in task_map:
+                    dependents[dep_id].append(t.id)
+                    in_degree[t.id] += 1
+
+        # Start with tasks that have no dependencies
+        queue = [tid for tid, deg in in_degree.items() if deg == 0]
+        result = []
+
+        while queue:
+            tid = queue.pop(0)
+            result.append(task_map[tid])
+            for dependent_id in dependents[tid]:
+                in_degree[dependent_id] -= 1
+                if in_degree[dependent_id] == 0:
+                    queue.append(dependent_id)
+
+        if len(result) != len(tasks):
+            missing = [t.id for t in tasks if t.id not in {r.id for r in result}]
+            raise ValueError(f"Circular dependency detected involving tasks: {missing}")
+
+        return result
+
+    def _check_dependencies_met(self, task: PlanTask, plan: Plan) -> bool:
+        """Check if all dependencies of a task are completed."""
+        task_map = {t.id: t for t in plan.tasks}
+        for dep_id in task.depends_on:
+            dep_task = task_map.get(dep_id)
+            if dep_task is None:
+                return False  # dependency not found
+            if dep_task.status != "completed":
+                return False
+        return True
+
     async def run_plan(self, plan_path: str, resume: bool = False, model: str = "deepseek-chat") -> Plan:
-        """Execute a full plan."""
+        """Execute a full plan with dependency-aware ordering."""
         # Load or resume plan
         if resume:
             plan_data = self.load_plan(plan_path)
@@ -195,25 +242,52 @@ Requirements:
         plan.started_at = plan.started_at or datetime.now().isoformat()
         self.save_progress(plan)
 
+        # Topological sort for dependency-aware execution
+        try:
+            sorted_tasks = self.topological_sort(plan.tasks)
+        except ValueError as e:
+            print(f"Dependency error: {e}")
+            plan.status = "failed"
+            plan.finished_at = datetime.now().isoformat()
+            self.save_progress(plan)
+            return plan
+
+        # Build ordered index map
+        sorted_ids = [t.id for t in sorted_tasks]
+        task_index_map = {t.id: i for i, t in enumerate(sorted_tasks)}
+
         print(f"\n{'='*60}")
         print(f"Plan: {plan.name}")
-        print(f"Tasks: {plan.total_tasks}")
+        print(f"Tasks: {plan.total_tasks} (dependency-sorted)")
         print(f"{'='*60}\n")
 
-        # Execute tasks
-        for i in range(plan.current_task_index, len(plan.tasks)):
-            task = plan.tasks[i]
-            plan.current_task_index = i
+        # Execute tasks in topological order
+        deferred_tasks = []  # tasks skipped due to unmet deps, to retry later
 
-            print(f"[{i+1}/{plan.total_tasks}] {task.title}")
+        for task in sorted_tasks:
+            orig_idx = next(i for i, t in enumerate(plan.tasks) if t.id == task.id)
+            plan.current_task_index = orig_idx
+
+            print(f"[{task.id}] {task.title}")
             print(f"  Type: {task.type}")
             if task.target:
                 print(f"  Target: {task.target}")
+            if task.depends_on:
+                print(f"  Depends on: {task.depends_on}")
 
             # Skip if already completed
             if task.status == "completed":
                 print(f"  SKIP (already completed)")
                 plan.completed_tasks += 1
+                continue
+
+            # Check dependencies
+            if not self._check_dependencies_met(task, plan):
+                print(f"  DEFERRED (dependencies not met)")
+                task.status = "skipped"
+                deferred_tasks.append(task)
+                plan.skipped_tasks += 1
+                self.save_progress(plan)
                 continue
 
             # Execute with retry
@@ -240,6 +314,40 @@ Requirements:
             # Update plan status
             if plan.failed_tasks > 0:
                 plan.status = "partial"
+
+        # Run deferred tasks (dependencies that became available later)
+        if deferred_tasks:
+            print(f"\n{'='*60}")
+            print(f"Running {len(deferred_tasks)} deferred tasks...")
+            print(f"{'='*60}\n")
+
+            for task in deferred_tasks:
+                if not self._check_dependencies_met(task, plan):
+                    print(f"[{task.id}] {task.title} — STILL BLOCKED, skipping")
+                    continue
+
+                task.status = "pending"
+                task.retry_count = 0
+                plan.skipped_tasks -= 1
+
+                print(f"[{task.id}] {task.title} (deferred retry)")
+
+                while task.retry_count <= task.max_retries:
+                    task = await self.execute_task(task, plan, model)
+
+                    if task.status == "completed":
+                        plan.completed_tasks += 1
+                        print(f"  DONE ({task.duration_s}s)")
+                        break
+                    elif task.status == "failed":
+                        task.retry_count += 1
+                        if task.retry_count <= task.max_retries:
+                            print(f"  FAILED (retry {task.retry_count}/{task.max_retries})")
+                        else:
+                            plan.failed_tasks += 1
+                            print(f"  FAILED (max retries reached)")
+
+                self.save_progress(plan)
 
         # Final status
         if plan.failed_tasks == 0:
