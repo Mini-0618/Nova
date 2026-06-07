@@ -837,6 +837,18 @@ class CodexLoop:
                 total_output_tokens += output_tok
                 self.total_tokens_used = total_input_tokens + total_output_tokens
 
+                # Token budget check
+                if self.config.max_total_tokens > 0 and self.total_tokens_used >= self.config.max_total_tokens:
+                    self.error = f"token_budget_exceeded ({self.total_tokens_used}/{self.config.max_total_tokens})"
+                    self.status = "token_budget_exceeded"
+                    self._running = False
+                    self._notify("token_budget_exceeded", {
+                        "total_tokens": self.total_tokens_used,
+                        "budget": self.config.max_total_tokens,
+                        "iteration": self._iteration,
+                    })
+                    break
+
                 self.session_mgr.update_tokens(
                     session_id, input_tok, output_tok,
                     cost=_estimate_cost(input_tok, output_tok, self.config.provider),
