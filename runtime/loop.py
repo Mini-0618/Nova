@@ -146,6 +146,9 @@ class LoopConfig:
     require_confirmation: bool = True  # require user confirmation for dangerous commands
     # Streaming settings
     stream: bool = False  # Enable streaming output
+    # Model fallback settings
+    fallback_models: List[str] = field(default_factory=list)  # Models to try when primary fails
+    fallback_threshold: int = 3  # Consecutive failures before auto-fallback
 
 
 # ─── LLM Interface ───────────────────────────────────────────────────────
@@ -303,6 +306,126 @@ def _resolve_api_key() -> str:
         if key:
             return key
     return ""
+
+
+def _resolve_api_key_for_provider(provider: str) -> str:
+    """Resolve API key for a specific provider."""
+    provider_key_map = {
+        "deepseek": ["DEEPSEEK_API_KEY", "CODEX_API_KEY"],
+        "openai": ["OPENAI_API_KEY", "CODEX_API_KEY"],
+        "xiaomi": ["XIAOMIMIMO_API_KEY", "CODEX_API_KEY"],
+        "ollama": ["CODEX_API_KEY"],  # Ollama doesn't need a real key
+    }
+    key_vars = provider_key_map.get(provider, ["CODEX_API_KEY"])
+    for var in key_vars:
+        key = os.environ.get(var)
+        if key:
+            return key
+    return ""
+
+
+# Well-known models and their default providers
+_MODEL_PROVIDER_MAP: Dict[str, str] = {
+    "deepseek-chat": "deepseek",
+    "deepseek-coder": "deepseek",
+    "deepseek-reasoner": "deepseek",
+    "gpt-4o": "openai",
+    "gpt-4o-mini": "openai",
+    "gpt-4": "openai",
+    "gpt-3.5-turbo": "openai",
+    "MiMo": "xiaomi",
+    "qwen-7b": "xiaomi",
+    "codellama": "ollama",
+    "llama3": "ollama",
+}
+
+
+def _infer_provider(model_name: str) -> str:
+    """Infer provider from model name. Falls back to env-based detection."""
+    # Check well-known map first
+    for prefix, prov in _MODEL_PROVIDER_MAP.items():
+        if model_name.startswith(prefix) or prefix in model_name:
+            return prov
+    # Fallback: if OPENAI_BASE_URL is set, assume openai-compatible
+    if os.environ.get("OPENAI_BASE_URL"):
+        return "openai"
+    return "deepseek"
+
+
+def list_available_models() -> List[Dict[str, Any]]:
+    """List all configured/available models.
+
+    Scans environment variables and well-known model registry.
+    Returns list of {name, provider, url, available}.
+    """
+    models = []
+    seen = set()
+
+    # 1. Current model from env
+    current_model = os.environ.get("CODEX_MODEL", "deepseek-chat")
+    current_provider = os.environ.get("CODEX_PROVIDER", "")
+
+    # 2. Scan well-known models — include those whose provider has an API key
+    for model_name, provider in _MODEL_PROVIDER_MAP.items():
+        if model_name in seen:
+            continue
+        seen.add(model_name)
+        url = _resolve_api_url(provider)
+        key = _resolve_api_key_for_provider(provider)
+        models.append({
+            "name": model_name,
+            "provider": provider,
+            "url": url,
+            "available": bool(key),
+        })
+
+    # 3. Add current model if not already listed
+    if current_model not in seen:
+        prov = current_provider or _infer_provider(current_model)
+        models.append({
+            "name": current_model,
+            "provider": prov,
+            "url": _resolve_api_url(prov),
+            "available": True,
+        })
+
+    # 4. Add any extra models from CODEX_FALLBACK_MODELS env
+    extra = os.environ.get("CODEX_FALLBACK_MODELS", "")
+    if extra:
+        for m in extra.split(","):
+            m = m.strip()
+            if m and m not in seen:
+                seen.add(m)
+                prov = _infer_provider(m)
+                models.append({
+                    "name": m,
+                    "provider": prov,
+                    "url": _resolve_api_url(prov),
+                    "available": bool(_resolve_api_key_for_provider(prov)),
+                })
+
+    return models
+
+
+async def _verify_model(model_name: str, provider: str = "") -> bool:
+    """Send a minimal request to verify a model is reachable and responds."""
+    try:
+        messages = [{"role": "user", "content": "hi"}]
+        config = LoopConfig(
+            model=model_name,
+            provider=provider or _infer_provider(model_name),
+            max_output_tokens=8,
+            temperature=0.0,
+        )
+        key = _resolve_api_key_for_provider(config.provider)
+        if not key:
+            key = _resolve_api_key()
+        if not key:
+            return False
+        resp = await _call_llm_async(messages, config, key, config.provider, config.model)
+        return bool(resp.get("output"))
+    except Exception:
+        return False
 
 
 async def _call_llm_async(messages: List[Dict], config: LoopConfig,
@@ -884,6 +1007,95 @@ class CodexLoop:
         self.start_time: Optional[float] = None
         self.error: Optional[str] = None
 
+        # Model switching state
+        self._consecutive_failures = 0
+        self._fallback_index = 0  # index into fallback_models
+        self._model_switch_history: List[Dict[str, str]] = []
+
+    async def switch_model(self, model_name: str, provider: str = "") -> Dict[str, Any]:
+        """Switch to a different model at runtime.
+
+        Args:
+            model_name: Target model name (e.g. "deepseek-chat", "gpt-4o")
+            provider: Target provider (auto-inferred if empty)
+
+        Returns:
+            {success: bool, old_model: str, new_model: str, error: str}
+        """
+        old_model = self.config.model
+        old_provider = self.config.provider
+
+        if model_name == old_model and (not provider or provider == old_provider):
+            return {"success": True, "old_model": old_model, "new_model": old_model,
+                    "error": "", "note": "already using this model"}
+
+        # Resolve provider
+        new_provider = provider or _infer_provider(model_name)
+
+        # Verify new model is reachable
+        try:
+            ok = await _verify_model(model_name, new_provider)
+        except Exception as e:
+            return {"success": False, "old_model": old_model, "new_model": model_name,
+                    "error": f"verification failed: {e}"}
+
+        if not ok:
+            return {"success": False, "old_model": old_model, "new_model": model_name,
+                    "error": "model verification returned empty response"}
+
+        # Apply switch
+        self.config.model = model_name
+        self.config.provider = new_provider
+        self._consecutive_failures = 0
+
+        record = {
+            "from": old_model,
+            "from_provider": old_provider,
+            "to": model_name,
+            "to_provider": new_provider,
+            "reason": "manual",
+            "timestamp": time.time(),
+        }
+        self._model_switch_history.append(record)
+
+        self._notify("model_switched", record)
+        return {"success": True, "old_model": old_model, "new_model": model_name, "error": ""}
+
+    def _try_fallback(self) -> Optional[str]:
+        """Attempt to switch to the next fallback model.
+
+        Returns:
+            New model name if switched, None if no more fallbacks.
+        """
+        fallbacks = self.config.fallback_models
+        if not fallbacks or self._fallback_index >= len(fallbacks):
+            return None
+
+        new_model = fallbacks[self._fallback_index]
+        self._fallback_index += 1
+
+        old_model = self.config.model
+        new_provider = _infer_provider(new_model)
+
+        self.config.model = new_model
+        self.config.provider = new_provider
+        self._consecutive_failures = 0
+
+        record = {
+            "from": old_model,
+            "to": new_model,
+            "to_provider": new_provider,
+            "reason": "auto_fallback",
+            "timestamp": time.time(),
+        }
+        self._model_switch_history.append(record)
+        self._notify("model_fallback", record)
+        return new_model
+
+    def get_model_switch_history(self) -> List[Dict[str, str]]:
+        """Return the history of model switches in this session."""
+        return list(self._model_switch_history)
+
     def add_listener(self, cb: Callable):
         self._listeners.append(cb)
 
@@ -988,13 +1200,51 @@ class CodexLoop:
                             "chunk": chunk,
                         })
 
-                response = await _call_llm_async(
-                    messages, self.config,
-                    _resolve_api_key(),
-                    self.config.provider,
-                    self.config.model,
-                    stream_callback=_stream_cb,
-                )
+                try:
+                    response = await _call_llm_async(
+                        messages, self.config,
+                        _resolve_api_key(),
+                        self.config.provider,
+                        self.config.model,
+                        stream_callback=_stream_cb,
+                    )
+                except Exception as llm_err:
+                    self._consecutive_failures += 1
+                    # Auto-fallback when consecutive failures reach threshold
+                    if (self.config.fallback_models
+                            and self._consecutive_failures >= self.config.fallback_threshold):
+                        new_model = self._try_fallback()
+                        if new_model:
+                            self._notify("auto_fallback", {
+                                "new_model": new_model,
+                                "consecutive_failures": self._consecutive_failures,
+                                "error": str(llm_err)[:200],
+                            })
+                            # Retry with the new model
+                            response = await _call_llm_async(
+                                messages, self.config,
+                                _resolve_api_key(),
+                                self.config.provider,
+                                self.config.model,
+                                stream_callback=_stream_cb,
+                            )
+                        else:
+                            # No more fallbacks — set error and break
+                            self.error = f"All models failed: {llm_err}"
+                            self.status = "error: all models failed"
+                            self._running = False
+                            break
+                    else:
+                        # Below threshold — log and continue to next iteration
+                        self._notify("llm_failure", {
+                            "consecutive_failures": self._consecutive_failures,
+                            "threshold": self.config.fallback_threshold,
+                            "error": str(llm_err)[:200],
+                        })
+                        continue
+
+                # Success — reset consecutive failure counter
+                self._consecutive_failures = 0
 
                 usage = response.get("usage", {})
                 input_tok = usage.get("input_tokens", 0)
