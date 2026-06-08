@@ -270,19 +270,20 @@ class ProjectAnalyzer:
             return module
 
         # Extract imports: import X from 'Y', require('Y')
-        import_patterns = [
+        # Combined pattern avoids O(n*P) nested loop over P patterns
+        _import_pattern = "|".join([
             r"import\s+(?:{[^}]+}|[\w*]+)\s+from\s+['\"]([^'\"]+)['\"]",
             r"import\s+['\"]([^'\"]+)['\"]",
             r"require\s*\(\s*['\"]([^'\"]+)['\"]\s*\)",
-        ]
-        for pattern in import_patterns:
-            for m in re.finditer(pattern, content):
-                module.imports.append(Import(
-                    file=str(path),
-                    module=m.group(1),
-                    names=[],
-                    line=content[:m.start()].count('\n') + 1,
-                ))
+        ])
+        for m in re.finditer(_import_pattern, content):
+            mod = next(g for g in m.groups() if g is not None)
+            module.imports.append(Import(
+                file=str(path),
+                module=mod,
+                names=[],
+                line=content[:m.start()].count('\n') + 1,
+            ))
 
         # Extract classes
         class_pattern = r"class\s+(\w+)(?:\s+extends\s+\w+)?\s*{"
@@ -295,18 +296,19 @@ class ProjectAnalyzer:
             ))
 
         # Extract functions: function name( ... ) {  or const name = ( ... ) =>
-        func_patterns = [
+        # Combined pattern avoids O(n*P) nested loop over P patterns
+        _func_pattern = "|".join([
             r"function\s+(\w+)\s*\(",
             r"(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>",
             r"(?:const|let|var)\s+(\w+)\s*=\s*async\s+function",
-        ]
-        for pattern in func_patterns:
-            for m in re.finditer(pattern, content):
-                module.symbols.append(Symbol(
-                    name=m.group(1),
-                    type="function",
-                    file=str(path),
-                    line=content[:m.start()].count('\n') + 1,
+        ])
+        for m in re.finditer(_func_pattern, content):
+            name = next(g for g in m.groups() if g is not None)
+            module.symbols.append(Symbol(
+                name=name,
+                type="function",
+                file=str(path),
+                line=content[:m.start()].count('\n') + 1,
                 ))
 
         return module
@@ -339,22 +341,14 @@ class ProjectAnalyzer:
                         graph.imports[module.relative_path].append(resolved)
                         graph.imported_by.setdefault(resolved, []).append(module.relative_path)
 
-        # Build symbol index
+        # Build symbol index (nested loop required: symbols distributed across modules)
         for rel_path, module in graph.modules.items():
             for sym in module.symbols:
-                if sym.name not in graph.all_symbols:
-                    graph.all_symbols[sym.name] = []
-                graph.all_symbols[sym.name].append(sym)
-
+                graph.all_symbols.setdefault(sym.name, []).append(sym)
                 if sym.type in ("class", "method"):
-                    if sym.name not in graph.classes:
-                        graph.classes[sym.name] = []
-                    graph.classes[sym.name].append(sym)
-
+                    graph.classes.setdefault(sym.name, []).append(sym)
                 if sym.type in ("function", "async_function"):
-                    if sym.name not in graph.functions:
-                        graph.functions[sym.name] = []
-                    graph.functions[sym.name].append(sym)
+                    graph.functions.setdefault(sym.name, []).append(sym)
 
         return graph
 

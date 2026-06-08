@@ -164,32 +164,36 @@ def _parse_pytest_output(stdout: str, stderr: str, root_path: str) -> List[TestR
     current_test = None
     current_stdout = []
 
+    # Constant: map pytest status words to internal status values
+    _STATUS_MAP = {
+        "PASSED": "passed",
+        "FAILED": "failed",
+        "SKIPPED": "skipped",
+        "ERROR": "error",
+    }
+
     for line in stdout.splitlines():
         # New test result line
         if "::" in line and ("PASSED" in line or "FAILED" in line or "SKIPPED" in line or "ERROR" in line):
             # Extract test name and status
             parts = line.split()
             if parts:
-                # Format: "path::test_name::status"
-                status_map = {
-                    "PASSED": "passed",
-                    "FAILED": "failed",
-                    "SKIPPED": "skipped",
-                    "ERROR": "error",
-                }
-                for status_word, status_val in status_map.items():
-                    if status_word in line:
-                        test_name = line.split("::")[1] if "::" in line else line
-                        tests.append(TestResult(
-                            name=test_name.strip(),
-                            file=root_path,
-                            line=0,
-                            status=status_val,
-                            duration_ms=0,
-                            stdout="",
-                            stderr="",
-                        ))
-                        break
+                # Format: "path::test_name::status" — O(1) lookup instead of inner loop
+                status_val = next(
+                    (v for k, v in _STATUS_MAP.items() if k in line),
+                    None,
+                )
+                if status_val is not None:
+                    test_name = line.split("::")[1] if "::" in line else line
+                    tests.append(TestResult(
+                        name=test_name.strip(),
+                        file=root_path,
+                        line=0,
+                        status=status_val,
+                        duration_ms=0,
+                        stdout="",
+                        stderr="",
+                    ))
 
     return tests
 

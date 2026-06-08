@@ -5,6 +5,7 @@ Data is stored as JSONL in data/training/{session_id}.jsonl
 """
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from typing import Optional, Dict, Any, List
 
 
 _DATA_DIR = Path(__file__).parent.parent / "data" / "training"
+_log = logging.getLogger(__name__)
 
 
 def _summarize_messages(messages: List[Dict], max_chars: int = 500) -> str:
@@ -109,7 +111,7 @@ class DataCollector:
             with open(self._file_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
         except Exception:
-            pass  # Don't let write errors break the loop
+            _log.warning("Failed to write training data to %s", self._file_path, exc_info=True)
 
         return entry
 

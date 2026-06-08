@@ -1511,10 +1511,8 @@ class ToolExecutor:
                     continue
 
             if output_mode == "count":
-                file_counts = {}
-                for r in results:
-                    f = r["file"]
-                    file_counts[f] = file_counts.get(f, 0) + 1
+                from collections import Counter
+                file_counts = dict(Counter(r["file"] for r in results))
                 return {"success": True, "counts": file_counts, "total": len(results)}
 
             return {"success": True, "results": results, "count": len(results)}

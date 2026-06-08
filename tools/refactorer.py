@@ -625,11 +625,14 @@ class MultiModuleRefactorer:
             # Add after docstring
             for i, line in enumerate(lines):
                 if line.strip().startswith('"""') or line.strip().startswith("'''"):
-                    # Find end of docstring
-                    for j in range(i + 1, len(lines)):
-                        if '"""' in lines[j] or "'''" in lines[j]:
-                            last_import_line = j + 1
-                            break
+                    # Find end of docstring using next() to avoid nested loop
+                    end = next(
+                        (j + 1 for j in range(i + 1, len(lines))
+                         if '"""' in lines[j] or "'''" in lines[j]),
+                        0,
+                    )
+                    if end:
+                        last_import_line = end
                     break
 
             if last_import_line > 0:

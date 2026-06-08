@@ -115,12 +115,15 @@ class AgentBrain:
                 with urllib.request.urlopen(req, timeout=120) as resp:
                     result = json.loads(resp.read().decode("utf-8"))
                     # 从 Responses API 格式中提取文本
-                    for item in result.get("output", []):
-                        if item.get("type") == "message":
-                            for c in item.get("content", []):
-                                if c.get("type") == "output_text":
-                                    return c.get("text", "").strip()
-                    return str(result)
+                    text = next(
+                        (c.get("text", "").strip()
+                         for item in result.get("output", [])
+                         if item.get("type") == "message"
+                         for c in item.get("content", [])
+                         if c.get("type") == "output_text"),
+                        None,
+                    )
+                    return text if text is not None else str(result)
             except Exception as e:
                 return f"[Brain Error] {e}"
 

@@ -380,6 +380,7 @@ class BreakpointManager:
         for filepath, bps in self.breakpoints.items():
             for bp in bps:
                 cmds.append(f"break {filepath}:{bp.lineno}")
+                # Append condition command if breakpoint has a condition
                 if bp.condition:
                     cmds.append(f"condition {bp.id} {bp.condition}")
         return cmds

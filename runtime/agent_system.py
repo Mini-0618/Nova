@@ -11,6 +11,7 @@ Supports:
 
 import os
 import json
+import logging
 import time
 import asyncio
 import uuid
@@ -18,6 +19,8 @@ from typing import Optional, Dict, Any, List, Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
+
+_log = logging.getLogger(__name__)
 
 # ─── Agent Types ──────────────────────────────────────────────────────────
 
@@ -222,8 +225,8 @@ def _grep_files(pattern: str, path: str = ".", glob_pattern: str = "*") -> Dict[
                                     "line": i,
                                     "text": line.strip()
                                 })
-                except:
-                    pass
+                except Exception:
+                    _log.warning("Failed to read file %s during search", file_path, exc_info=True)
         return {"success": True, "results": results[:100], "count": len(results)}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -254,10 +257,11 @@ def _list_files(path: str = ".", recursive: bool = False) -> Dict[str, Any]:
     """List files in directory"""
     try:
         if recursive:
-            files = []
-            for root, dirs, filenames in os.walk(path):
-                for f in filenames:
-                    files.append(os.path.join(root, f))
+            files = [
+                os.path.join(root, f)
+                for root, dirs, filenames in os.walk(path)
+                for f in filenames
+            ]
         else:
             files = os.listdir(path)
         return {"success": True, "files": files, "count": len(files)}
@@ -389,8 +393,8 @@ class Agent:
         for cb in self._listeners:
             try:
                 cb(event, data)
-            except:
-                pass
+            except Exception:
+                _log.warning("Listener callback %s failed for event=%s", cb, event, exc_info=True)
 
     async def run(self, task: str) -> AgentResult:
         """Run the agent with a task"""

@@ -6,6 +6,7 @@ No human confirmation needed. Every action is logged and can be recovered.
 
 import os
 import json
+import logging
 import time
 import asyncio
 import threading
@@ -13,7 +14,6 @@ import traceback
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
 from dataclasses import dataclass, field
-from enum import Enum
 
 import sys as _sys
 _root = Path(__file__).parent.parent
@@ -25,78 +25,65 @@ from runtime.session import SessionManager, get_manager, Session  # noqa: E402
 from runtime.memory import MemoryManager, get_memory_manager  # noqa: E402
 from runtime.data_collector import DataCollector  # noqa: E402
 
+# Import from refactored modules
+from runtime.decision_engine import (  # noqa: E402
+    ActionType, Action, DecisionEngine,
+    SYSTEM_PROMPT, CHAIN_OF_THOUGHT_PROMPT,
+)
+from runtime.message_manager import (  # noqa: E402
+    _build_messages, _estimate_tokens, _msg_char_len,
+    MAX_MESSAGES_CHARS, _TOOL_USE_REMINDER,
+)
+from runtime.llm_client import (  # noqa: E402
+    _call_llm_async, _parse_sse_stream, _convert_chat_to_response_format,
+    _resolve_api_url, _resolve_api_key, _resolve_api_key_for_provider,
+    _infer_provider, _verify_model, list_available_models,
+    _MODEL_PROVIDER_MAP, _convert_tools_to_openai_format, _extract_output_items,
+)
 
-# ─── Decision Types ─────────────────────────────────────────────────────────
+_log = logging.getLogger(__name__)
 
-class ActionType(Enum):
-    CALL_TOOL = "call_tool"
-    RESPOND = "respond"
-    WAIT = "wait"
-    LOOP_END = "loop_end"
-    ERROR = "error"
+# ─── Backward-compatible re-exports ────────────────────────────────────────
+# All public names are importable from runtime.loop
 
-
-@dataclass
-class Action:
-    type: ActionType
-    tool_name: Optional[str] = None
-    tool_args: Optional[Dict] = None
-    response_text: Optional[str] = None
-    confidence: float = 1.0
-    reasoning: str = ""
-    will_continue: bool = True
-
-    def to_dict(self) -> dict:
-        return {
-            "type": self.type.value,
-            "tool_name": self.tool_name,
-            "tool_args": self.tool_args,
-            "response_text": self.response_text,
-            "confidence": self.confidence,
-            "reasoning": self.reasoning,
-            "will_continue": self.will_continue,
-        }
-
-
-# ─── System Prompt ─────────────────────────────────────────────────────────
-
-SYSTEM_PROMPT = """You are an autonomous coding agent. You complete tasks by calling tools directly.
-
-TOOL USAGE — use the RIGHT tool for each job:
-- Read(file_path) — read a file
-- Write(file_path, content) — CREATE a file. Use this for new files.
-- Edit(file_path, old_string, new_string) — modify an existing file
-- Bash(command) — RUN a command. Use this to execute scripts, run tests, verify output.
-- sandbox_exec — ONLY for quick code snippets, NOT for file operations
-
-IMPORTANT: sandbox_exec runs in an isolated directory. NEVER use it for tasks that create files.
-Always use Write + Bash for file creation and execution.
-
-PATCH QUALITY RULES:
-- Use Edit for small, targeted changes. Each Edit should change only the necessary lines.
-- Do NOT use Write to overwrite an entire file when only a few lines changed — use Edit instead.
-- If you need to modify multiple files, do them one at a time. Do not batch more than 3 file edits in a single iteration.
-- Keep changes minimal and focused. Do not refactor unrelated code when fixing a bug.
-
-WORKFLOW:
-1. Read files to understand current state
-2. Write or Edit to make changes
-3. Bash to run/verify
-4. If it fails, read the error, fix, retry once
-
-CLI TASK EXAMPLES:
-- To run a Python script: 1. Write('script.py', code) 2. Bash('python script.py')
-- To capture command output: 1. Bash('python --version') 2. Write('output.txt', result)
-- To install a package: 1. Bash('pip install requests') 2. Bash('python -c "import requests; print(requests.__version__)"')
-- To create and test a module: 1. Write('mymod.py', code) 2. Write('test_mymod.py', test_code) 3. Bash('python -m pytest test_mymod.py -v')
-
-RULES:
-- Create files with Write, then run with Bash("python filename")
-- Run tests with Bash("python -m pytest ...")
-- Check output with Read or Bash
-- Never describe what you would do — just do it
-- Stop when the task is verified complete
-- ALWAYS call tools to perform actions. NEVER just describe what you would do in text."""
+__all__ = [
+    # Config
+    "LoopConfig",
+    "SYSTEM_PROMPT",
+    "CHAIN_OF_THOUGHT_PROMPT",
+    # Decision types
+    "ActionType",
+    "Action",
+    "DecisionEngine",
+    # Message functions
+    "_build_messages",
+    "_estimate_tokens",
+    "_msg_char_len",
+    "MAX_MESSAGES_CHARS",
+    "_TOOL_USE_REMINDER",
+    # LLM functions
+    "_call_llm_async",
+    "_parse_sse_stream",
+    "_convert_chat_to_response_format",
+    "_resolve_api_url",
+    "_resolve_api_key",
+    "_resolve_api_key_for_provider",
+    "_infer_provider",
+    "_verify_model",
+    "list_available_models",
+    "_MODEL_PROVIDER_MAP",
+    "_convert_tools_to_openai_format",
+    "_extract_output_items",
+    # Loop classes
+    "CodexLoop",
+    "EnhancedCodexLoop",
+    # Cost
+    "COST_PER_1K",
+    "_estimate_cost",
+    # Runners
+    "run_automated",
+    "run_enhanced",
+]
 
 
 # ─── LoopConfig ───────────────────────────────────────────────────────────
@@ -131,10 +118,10 @@ class LoopConfig:
     memory_importance_threshold: float = 0.6  # Threshold for auto-remembering
     # Workspace settings
     workspace: str = ""  # Working directory for file operations
-    # Proxy settings — only applied per CodexLoop instance, not globally at import
+    # Proxy settings -- only applied per CodexLoop instance, not globally at import
     clear_proxy_env: bool = True  # Unset proxy env vars during loop execution
     # Context management
-    max_context_tokens: int = 8000  # Max tokens in context window (1 token ≈ 4 chars)
+    max_context_tokens: int = 8000  # Max tokens in context window (1 token ~= 4 chars)
     # Token budget control
     max_total_tokens: int = 50000  # Total token budget for a single run_task()
     # Security sandbox settings
@@ -149,830 +136,6 @@ class LoopConfig:
     # Model fallback settings
     fallback_models: List[str] = field(default_factory=list)  # Models to try when primary fails
     fallback_threshold: int = 3  # Consecutive failures before auto-fallback
-
-
-# ─── LLM Interface ───────────────────────────────────────────────────────
-
-def _convert_tools_to_openai_format(tools: List[Dict]) -> List[Dict]:
-    """Convert flat tool format to OpenAI function format.
-    Handles: {"type":"function","name":"Foo","parameters":{...}}
-    And:    {"type":"function","function":{"name":"Foo","parameters":{...}}}"""
-    converted = []
-    for t in tools:
-        if not isinstance(t, dict):
-            continue
-        # If already has proper nested "function" key, pass through
-        if "function" in t:
-            converted.append(t)
-        elif t.get("type") == "function":
-            converted.append({
-                "type": "function",
-                "function": {
-                    "name": t.get("name", ""),
-                    "description": t.get("description", ""),
-                    "parameters": t.get("parameters", {"type": "object", "properties": {}}),
-                }
-            })
-        else:
-            converted.append(t)
-    return converted
-
-
-MAX_MESSAGES_CHARS = 80_000  # ~20k tokens -- keep request body under ~100KB
-
-
-def _estimate_tokens(text: str) -> int:
-    """Estimate token count: ~1 token per 4 characters."""
-    return len(text) // 4 + 1
-
-
-def _msg_char_len(msg: Dict) -> int:
-    """Get the serialized char length of a message."""
-    return len(json.dumps(msg, ensure_ascii=False))
-
-
-_TOOL_USE_REMINDER = (
-    "You must use tools. Call Write to create files, Bash to execute commands. "
-    "Do not describe what you would do."
-)
-
-
-def _build_messages(task: str, history: List[Dict], system_prompt: str,
-                    max_context_tokens: int = 0) -> List[Dict]:
-    """Build message list with token-aware context window management.
-
-    Args:
-        task: Current user task
-        history: Previous message history
-        system_prompt: System prompt
-        max_context_tokens: Max context tokens (0 = use legacy char-based limit)
-    """
-    # Build full messages first
-    full_messages = []
-    for msg in history:
-        role = msg.get("role", "user")
-        m = {"role": role, "content": msg.get("content", "") or ""}
-        if role == "tool" and msg.get("tool_call_id"):
-            m["tool_call_id"] = msg["tool_call_id"]
-        if role == "assistant" and msg.get("tool_calls"):
-            m["tool_calls"] = msg["tool_calls"]
-        full_messages.append(m)
-
-    # Auto-inject tool-use reminder if last assistant message had no tool_calls
-    if full_messages:
-        last_assistant = None
-        for m in reversed(full_messages):
-            if m.get("role") == "assistant":
-                last_assistant = m
-                break
-        if last_assistant and not last_assistant.get("tool_calls"):
-            # Last assistant output was pure text (no tools) — remind it to use tools
-            full_messages.append({"role": "user", "content": _TOOL_USE_REMINDER})
-
-    full_messages.append({"role": "user", "content": task})
-
-    system_msg = {"role": "system", "content": system_prompt}
-
-    if max_context_tokens > 0:
-        # Token-based context management: 1 token approx 4 chars
-        max_chars = max_context_tokens * 4
-        total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in full_messages)
-
-        if total_chars <= max_chars:
-            return [system_msg] + full_messages
-
-        # Truncate oldest messages while preserving tool-call pairing
-        recent = list(full_messages)
-        while recent and total_chars > max_chars:
-            removed = recent.pop(0)
-            # If removed assistant msg with tool_calls, also remove following tool results
-            if removed.get("role") == "assistant" and removed.get("tool_calls"):
-                while recent and recent[0].get("role") == "tool":
-                    recent.pop(0)
-            total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in recent)
-
-        # Drop orphaned tool results at the front
-        while recent and recent[0].get("role") == "tool":
-            recent.pop(0)
-
-        return [system_msg] + recent
-    else:
-        # Legacy char-based limit
-        total_chars = sum(_msg_char_len(m) for m in full_messages)
-
-        if total_chars <= MAX_MESSAGES_CHARS:
-            return [system_msg] + full_messages
-
-        recent = list(full_messages)
-        while recent and total_chars > MAX_MESSAGES_CHARS:
-            removed = recent.pop(0)
-            if removed.get("role") == "assistant" and removed.get("tool_calls"):
-                while recent and recent[0].get("role") == "tool":
-                    recent.pop(0)
-            total_chars = sum(_msg_char_len(m) for m in recent)
-
-        while recent and recent[0].get("role") == "tool":
-            recent.pop(0)
-
-        return [system_msg] + recent
-
-
-def _resolve_api_url(provider: str = "") -> str:
-    """Resolve API base URL from provider name or env override."""
-    # Check env override first (OPENAI_BASE_URL style)
-    for var in ["CODEX_API_URL", "OPENAI_BASE_URL"]:
-        url = os.environ.get(var)
-        if url:
-            return url.rstrip("/") + "/chat/completions"
-
-    providers = {
-        "deepseek": "https://api.deepseek.com/chat/completions",
-        "openai": "https://api.openai.com/v1/chat/completions",
-        "xiaomi": "https://api.xiaomi.com/v1/chat/completions",
-        "ollama": "http://localhost:11434/v1/chat/completions",
-    }
-    if not provider:
-        # Auto-detect: if OPENAI_BASE_URL is set, use openai
-        if os.environ.get("OPENAI_BASE_URL"):
-            return os.environ["OPENAI_BASE_URL"].rstrip("/") + "/chat/completions"
-        return providers["deepseek"]
-    return providers.get(provider, providers["deepseek"])
-
-
-def _resolve_api_key() -> str:
-    """Resolve API key from env, checking multiple sources."""
-    for var in ["CODEX_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "XIAOMIMIMO_API_KEY"]:
-        key = os.environ.get(var)
-        if key:
-            return key
-    return ""
-
-
-def _resolve_api_key_for_provider(provider: str) -> str:
-    """Resolve API key for a specific provider."""
-    provider_key_map = {
-        "deepseek": ["DEEPSEEK_API_KEY", "CODEX_API_KEY"],
-        "openai": ["OPENAI_API_KEY", "CODEX_API_KEY"],
-        "xiaomi": ["XIAOMIMIMO_API_KEY", "CODEX_API_KEY"],
-        "ollama": ["CODEX_API_KEY"],  # Ollama doesn't need a real key
-    }
-    key_vars = provider_key_map.get(provider, ["CODEX_API_KEY"])
-    for var in key_vars:
-        key = os.environ.get(var)
-        if key:
-            return key
-    return ""
-
-
-# Well-known models and their default providers
-_MODEL_PROVIDER_MAP: Dict[str, str] = {
-    "deepseek-chat": "deepseek",
-    "deepseek-coder": "deepseek",
-    "deepseek-reasoner": "deepseek",
-    "gpt-4o": "openai",
-    "gpt-4o-mini": "openai",
-    "gpt-4": "openai",
-    "gpt-3.5-turbo": "openai",
-    "MiMo": "xiaomi",
-    "qwen-7b": "xiaomi",
-    "codellama": "ollama",
-    "llama3": "ollama",
-}
-
-
-def _infer_provider(model_name: str) -> str:
-    """Infer provider from model name. Falls back to env-based detection."""
-    # Check well-known map first
-    for prefix, prov in _MODEL_PROVIDER_MAP.items():
-        if model_name.startswith(prefix) or prefix in model_name:
-            return prov
-    # Fallback: if OPENAI_BASE_URL is set, assume openai-compatible
-    if os.environ.get("OPENAI_BASE_URL"):
-        return "openai"
-    return "deepseek"
-
-
-def list_available_models() -> List[Dict[str, Any]]:
-    """List all configured/available models.
-
-    Scans environment variables and well-known model registry.
-    Returns list of {name, provider, url, available}.
-    """
-    models = []
-    seen = set()
-
-    # 1. Current model from env
-    current_model = os.environ.get("CODEX_MODEL", "deepseek-chat")
-    current_provider = os.environ.get("CODEX_PROVIDER", "")
-
-    # 2. Scan well-known models — include those whose provider has an API key
-    for model_name, provider in _MODEL_PROVIDER_MAP.items():
-        if model_name in seen:
-            continue
-        seen.add(model_name)
-        url = _resolve_api_url(provider)
-        key = _resolve_api_key_for_provider(provider)
-        models.append({
-            "name": model_name,
-            "provider": provider,
-            "url": url,
-            "available": bool(key),
-        })
-
-    # 3. Add current model if not already listed
-    if current_model not in seen:
-        prov = current_provider or _infer_provider(current_model)
-        models.append({
-            "name": current_model,
-            "provider": prov,
-            "url": _resolve_api_url(prov),
-            "available": True,
-        })
-
-    # 4. Add any extra models from CODEX_FALLBACK_MODELS env
-    extra = os.environ.get("CODEX_FALLBACK_MODELS", "")
-    if extra:
-        for m in extra.split(","):
-            m = m.strip()
-            if m and m not in seen:
-                seen.add(m)
-                prov = _infer_provider(m)
-                models.append({
-                    "name": m,
-                    "provider": prov,
-                    "url": _resolve_api_url(prov),
-                    "available": bool(_resolve_api_key_for_provider(prov)),
-                })
-
-    return models
-
-
-async def _verify_model(model_name: str, provider: str = "") -> bool:
-    """Send a minimal request to verify a model is reachable and responds."""
-    try:
-        messages = [{"role": "user", "content": "hi"}]
-        config = LoopConfig(
-            model=model_name,
-            provider=provider or _infer_provider(model_name),
-            max_output_tokens=8,
-            temperature=0.0,
-        )
-        key = _resolve_api_key_for_provider(config.provider)
-        if not key:
-            key = _resolve_api_key()
-        if not key:
-            return False
-        resp = await _call_llm_async(messages, config, key, config.provider, config.model)
-        return bool(resp.get("output"))
-    except Exception:
-        return False
-
-
-async def _call_llm_async(messages: List[Dict], config: LoopConfig,
-                          api_key: str, provider: str, model: str,
-                          stream_callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
-    """Call the LLM directly via Chat Completions API with retry logic.
-
-    Args:
-        stream_callback: Optional callback for streaming chunks. Each chunk text is passed to it.
-    """
-    # Build Chat Completions body from message history
-    chat_messages = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-
-        if role == "system":
-            chat_messages.append({"role": "system", "content": content})
-        elif role == "user":
-            chat_messages.append({"role": "user", "content": content})
-        elif role == "assistant":
-            if msg.get("tool_calls"):
-                tool_calls = []
-                for tc in msg["tool_calls"]:
-                    fn = tc.get("function", {})
-                    tool_calls.append({
-                        "id": tc.get("id", f"call_{id(tc)}"),
-                        "type": "function",
-                        "function": {
-                            "name": fn.get("name", ""),
-                            "arguments": fn.get("arguments", "{}"),
-                        }
-                    })
-                chat_messages.append({"role": "assistant", "content": content or "", "tool_calls": tool_calls})
-            else:
-                chat_messages.append({"role": "assistant", "content": content or ""})
-        elif role == "tool":
-            chat_messages.append({
-                "role": "tool",
-                "tool_call_id": msg.get("tool_call_id", "unknown"),
-                "content": content,
-            })
-
-    use_stream = config.stream and stream_callback is not None
-
-    body = {
-        "model": model,
-        "messages": chat_messages,
-        "stream": use_stream,
-        "temperature": config.temperature,
-        "max_tokens": config.max_output_tokens,
-    }
-    body["tools"] = _convert_tools_to_openai_format(TOOL_DEFINITIONS)
-
-    # Call LLM directly with retry using requests session for reliability
-    import requests
-    from requests.adapters import HTTPAdapter
-    from urllib3.util.retry import Retry
-
-    session = requests.Session()
-    api_url = _resolve_api_url(provider)
-    adapter = HTTPAdapter(
-        max_retries=Retry(total=10, backoff_factor=2.0, status_forcelist=[429, 500, 502, 503, 504]),
-        pool_connections=1,
-        pool_maxsize=1,
-    )
-    session.mount("https://", adapter)
-
-    max_retries = 10
-    base_delay = 3.0
-    last_exception = None
-
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = session.post(
-                api_url,
-                json=body,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer " + api_key,
-                },
-                timeout=(10, 300 if use_stream else 120),  # longer timeout for streaming
-                stream=use_stream,
-            )
-            # Check HTTP status before attempting to parse
-            if resp.status_code != 200:
-                err_body = resp.text or "no body"
-                status = resp.status_code
-                retryable = status in (429, 500, 502, 503, 504)
-                if status == 400 and "context length" in err_body.lower():
-                    raise RuntimeError(f"LLM API error {status}: {err_body}")
-                if retryable and attempt < max_retries:
-                    delay = base_delay * (2 ** (attempt - 1))
-                    import random
-                    delay *= 0.75 + 0.5 * random.random()
-                    last_exception = RuntimeError(f"LLM API error {status} (attempt {attempt}/{max_retries}): {err_body[:500]}")
-                    await asyncio.sleep(delay)
-                    continue
-                else:
-                    raise RuntimeError(f"LLM API error {status}: {err_body[:1000]}")
-
-            if use_stream:
-                return _parse_sse_stream(resp, model, stream_callback)
-            else:
-                try:
-                    result = resp.json()
-                except json.JSONDecodeError as e:
-                    raise RuntimeError(f"LLM API returned non-JSON response (status {resp.status_code}): {resp.text[:500]}") from e
-                choices = result.get("choices")
-                if not choices or not isinstance(choices, list) or len(choices) == 0:
-                    error_msg = result.get("error", {}).get("message", "Empty choices in response")
-                    raise RuntimeError(f"LLM API returned invalid response: {error_msg}")
-                return _convert_chat_to_response_format(result, model)
-
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
-                requests.exceptions.RequestException) as e:
-            if attempt < max_retries:
-                delay = base_delay * (2 ** (attempt - 1))
-                import random
-                delay *= 0.75 + 0.5 * random.random()
-                last_exception = RuntimeError(f"LLM API connection error (attempt {attempt}/{max_retries}): {e}")
-                await asyncio.sleep(delay)
-                continue
-            else:
-                raise RuntimeError(f"LLM API connection failed after {max_retries} retries: {e}") from e
-
-    raise last_exception or RuntimeError("LLM API call failed after all retries")
-
-
-def _parse_sse_stream(resp, model: str, callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
-    """Parse an SSE streaming response and accumulate into standard response format.
-
-    Args:
-        resp: requests Response with stream=True
-        model: Model name for the response
-        callback: Optional callback called with each text chunk
-
-    Returns:
-        Response dict in the same format as _convert_chat_to_response_format
-    """
-    import uuid as _uuid
-
-    accumulated_text = ""
-    tool_calls_map: Dict[int, Dict] = {}  # index -> {id, name, arguments}
-    finish_reason = None
-    prompt_tokens = 0
-    completion_tokens = 0
-
-    for line in resp.iter_lines(decode_unicode=True):
-        if not line:
-            continue
-        line = line.strip()
-        if not line.startswith("data:"):
-            continue
-        data_str = line[len("data:"):].strip()
-        if data_str == "[DONE]":
-            break
-        try:
-            chunk = json.loads(data_str)
-        except json.JSONDecodeError:
-            continue
-
-        # Extract usage if present (some providers include it in the last chunk)
-        chunk_usage = chunk.get("usage")
-        if chunk_usage:
-            prompt_tokens = chunk_usage.get("prompt_tokens", prompt_tokens)
-            completion_tokens = chunk_usage.get("completion_tokens", completion_tokens)
-
-        choices = chunk.get("choices", [])
-        if not choices:
-            continue
-
-        delta = choices[0].get("delta", {})
-        finish_reason = choices[0].get("finish_reason") or finish_reason
-
-        # Accumulate text content
-        content_delta = delta.get("content", "")
-        if content_delta:
-            accumulated_text += content_delta
-            if callback:
-                try:
-                    callback(content_delta)
-                except Exception:
-                    pass
-
-        # Accumulate tool calls
-        tc_delta = delta.get("tool_calls", [])
-        for tc in tc_delta:
-            idx = tc.get("index", 0)
-            if idx not in tool_calls_map:
-                tool_calls_map[idx] = {
-                    "id": tc.get("id", ""),
-                    "name": "",
-                    "arguments": "",
-                }
-            if tc.get("id"):
-                tool_calls_map[idx]["id"] = tc["id"]
-            fn = tc.get("function", {})
-            if fn.get("name"):
-                tool_calls_map[idx]["name"] = fn["name"]
-            if fn.get("arguments"):
-                tool_calls_map[idx]["arguments"] += fn["arguments"]
-
-    # Build output in standard format
-    output = []
-    if accumulated_text:
-        output.append({
-            "id": "msg_" + _uuid.uuid4().hex,
-            "type": "message",
-            "status": "completed",
-            "role": "assistant",
-            "content": [{"type": "output_text", "text": accumulated_text, "annotations": []}],
-        })
-    for idx in sorted(tool_calls_map.keys()):
-        tc = tool_calls_map[idx]
-        output.append({
-            "id": "fc_" + _uuid.uuid4().hex,
-            "type": "function_call",
-            "status": "completed",
-            "call_id": tc["id"] or f"call_{_uuid.uuid4().hex[:8]}",
-            "name": tc["name"],
-            "arguments": tc["arguments"] or "{}",
-        })
-
-    # Estimate token usage if not provided by the API
-    if completion_tokens == 0 and accumulated_text:
-        completion_tokens = _estimate_tokens(accumulated_text)
-
-    return {
-        "id": "resp_" + _uuid.uuid4().hex,
-        "object": "response",
-        "created_at": int(time.time()),
-        "status": "completed",
-        "model": model,
-        "output": output,
-        "usage": {
-            "input_tokens": prompt_tokens,
-            "output_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        },
-    }
-
-
-def _convert_chat_to_response_format(chat_resp: Dict, model: str) -> Dict:
-    """Convert Chat Completions response to internal response format."""
-    import time, uuid
-    choice = (chat_resp.get("choices") or [{}])[0]
-    msg = choice.get("message") or {}
-    content = msg.get("content") or ""
-    tool_calls = msg.get("tool_calls") or []
-
-    output = []
-    if content:
-        output.append({
-            "id": "msg_" + uuid.uuid4().hex,
-            "type": "message",
-            "status": "completed",
-            "role": "assistant",
-            "content": [{"type": "output_text", "text": content, "annotations": []}],
-        })
-    for tc in tool_calls:
-        fn = tc.get("function") or {}
-        output.append({
-            "id": "fc_" + uuid.uuid4().hex,
-            "type": "function_call",
-            "status": "completed",
-            "call_id": tc.get("id", ""),
-            "name": fn.get("name", ""),
-            "arguments": fn.get("arguments", "{}"),
-        })
-
-    usage = chat_resp.get("usage") or {}
-    return {
-        "id": "resp_" + uuid.uuid4().hex,
-        "object": "response",
-        "created_at": int(time.time()),
-        "status": "completed",
-        "model": model,
-        "output": output,
-        "usage": {
-            "input_tokens": usage.get("prompt_tokens", 0),
-            "output_tokens": usage.get("completion_tokens", 0),
-            "total_tokens": usage.get("total_tokens", 0),
-        },
-    }
-
-
-def _extract_output_items(response: Dict) -> List[Dict]:
-    """Extract output items with validation and graceful fallback for malformed responses."""
-    if not isinstance(response, dict):
-        return []
-    
-    output = response.get("output")
-    if output is None:
-        # Try alternative response formats
-        choices = response.get("choices")
-        if choices and isinstance(choices, list) and len(choices) > 0:
-            msg = choices[0].get("message", {})
-            items = []
-            content = msg.get("content", "")
-            if content:
-                items.append({
-                    "id": "msg_fallback",
-                    "type": "message",
-                    "status": "completed",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": content, "annotations": []}],
-                })
-            for tc in msg.get("tool_calls", []):
-                fn = tc.get("function", {})
-                items.append({
-                    "id": "fc_fallback_" + str(id(tc)),
-                    "type": "function_call",
-                    "status": "completed",
-                    "call_id": tc.get("id", ""),
-                    "name": fn.get("name", ""),
-                    "arguments": fn.get("arguments", "{}"),
-                })
-            return items
-        return []
-    
-    if not isinstance(output, list):
-        return []
-    
-    # Validate each item and filter out malformed ones
-    valid_items = []
-    for item in output:
-        if not isinstance(item, dict):
-            continue
-        item_type = item.get("type")
-        if item_type == "function_call":
-            # Ensure function_call items have at minimum a name
-            name = item.get("name", "")
-            if name:
-                valid_items.append(item)
-            else:
-                # Try to recover: check if there's a tool_name field
-                tool_name = item.get("tool_name", item.get("function", {}).get("name", ""))
-                if tool_name:
-                    item["name"] = tool_name
-                    valid_items.append(item)
-        elif item_type == "message":
-            content = item.get("content", [])
-            if content and isinstance(content, list):
-                valid_items.append(item)
-            elif item.get("text"):  # Some models return flat text
-                valid_items.append({
-                    "id": item.get("id", "msg_recovered"),
-                    "type": "message",
-                    "status": "completed",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": item["text"], "annotations": []}],
-                })
-        else:
-            # Unknown type — try to salvage if it has recognizable fields
-            if item.get("name") and not item.get("type"):
-                item["type"] = "function_call"
-                valid_items.append(item)
-            elif item.get("text") or item.get("content"):
-                item["type"] = "message"
-                valid_items.append(item)
-    
-    return valid_items
-
-
-# ─── Auto-Decision Engine ─────────────────────────────────────────────────
-
-class DecisionEngine:
-    """
-    Analyzes LLM output and decides what to do next.
-    Maps function calls to real tool executions.
-    """
-
-    def __init__(self, executor: ToolExecutor, config: LoopConfig):
-        self.executor = executor
-        self.config = config
-
-    def _check_command_safety(self, command: str) -> Dict[str, Any]:
-        """Check if a bash command is safe to execute.
-
-        Returns:
-            {"allowed": bool, "reason": str, "requires_confirmation": bool}
-        """
-        cmd_lower = command.strip().lower()
-
-        # Check allowlist first (if non-empty, only these are allowed)
-        if self.config.allowed_commands:
-            if not any(cmd_lower.startswith(ac.lower()) for ac in self.config.allowed_commands):
-                return {
-                    "allowed": False,
-                    "reason": f"Command not in allowlist: {command[:80]}",
-                    "requires_confirmation": False,
-                }
-
-        # Check blocklist
-        for blocked in self.config.blocked_commands:
-            if blocked.lower() in cmd_lower:
-                return {
-                    "allowed": False,
-                    "reason": f"Dangerous command blocked: matches pattern '{blocked}'",
-                    "requires_confirmation": True,
-                }
-
-        # Check for inherently dangerous patterns
-        dangerous_patterns = [
-            "rm -rf", "rmdir /s", "del /f /s /q",
-            "> /dev/", "mkfs", "fdisk",
-            "chmod 777", "chown root",
-            "curl | bash", "wget | bash", "curl|bash", "wget|bash",
-            "eval(", "exec(",
-        ]
-        for pattern in dangerous_patterns:
-            if pattern in cmd_lower:
-                return {
-                    "allowed": False,
-                    "reason": f"Potentially dangerous command: contains '{pattern}'",
-                    "requires_confirmation": True,
-                }
-
-        return {"allowed": True, "reason": "Command passed safety check", "requires_confirmation": False}
-
-    def decide(self, output_items: List[Dict]) -> Action:
-        if not output_items:
-            return Action(
-                type=ActionType.ERROR,
-                reasoning="No output items from LLM",
-                will_continue=False,
-            )
-
-        # Collect ALL function calls with their call_ids
-        pending_calls = []
-        for item in output_items:
-            if item.get("type") == "function_call":
-                tool_name = item.get("name", "")
-                tool_args_str = item.get("arguments", "{}")
-                if isinstance(tool_args_str, str):
-                    try:
-                        tool_args = json.loads(tool_args_str)
-                    except json.JSONDecodeError:
-                        tool_args = {"raw": tool_args_str}
-                elif isinstance(tool_args_str, dict):
-                    tool_args = tool_args_str
-                else:
-                    tool_args = {}
-                call_id = item.get("call_id", f"call_{id(item)}")
-                pending_calls.append((call_id, tool_name, tool_args))
-
-        if pending_calls:
-            # Return first call; store rest in config for batch execution
-            call_id, tool_name, tool_args = pending_calls[0]
-            self._pending_calls = pending_calls[1:]  # [(call_id, name, args), ...]
-            return Action(
-                type=ActionType.CALL_TOOL,
-                tool_name=tool_name,
-                tool_args=tool_args,
-                confidence=0.95,
-                reasoning=f"Calling tool: {tool_name}",
-            )
-
-        for item in output_items:
-            item_type = item.get("type")
-
-            if item_type == "message":
-                content = item.get("content", [])
-                text = ""
-                for c in content:
-                    if isinstance(c, dict) and c.get("type") == "output_text":
-                        text = c.get("text", "")
-                        break
-
-                if text:
-                    # If text looks like a tool_call description rather than a real answer,
-                    # treat it as needing another iteration
-                    stripped = text.strip()
-                    # Detect "describing instead of doing" patterns
-                    describe_patterns = [
-                        stripped.startswith("<"),
-                        "tool_calls" in stripped,
-                        "invoke name=" in stripped,
-                        stripped.lower().startswith(("i'll ", "i will ", "let me ", "here's ", "first, ", "to fix")),
-                        "```python" in stripped and len(stripped) > 200,
-                        "i would " in stripped.lower() and "tool" in stripped.lower(),
-                        "here is the code" in stripped.lower(),
-                        "here's the code" in stripped.lower(),
-                        "the following code" in stripped.lower(),
-                        "you can use" in stripped.lower() and len(stripped) > 100,
-                        "step 1:" in stripped.lower() and "step 2:" in stripped.lower(),
-                    ]
-                    if any(describe_patterns):
-                        # Model is describing tools in text instead of using tool_calls — force continue
-                        self._suppressed_response = stripped
-                        return Action(
-                            type=ActionType.RESPOND,
-                            response_text="[tool description suppressed — continuing]",
-                            confidence=0.3,
-                            reasoning="Model described tools in text instead of calling them, confidence dropped to 0.3, forcing next iteration",
-                            will_continue=True,
-                        )
-                    return Action(
-                        type=ActionType.RESPOND,
-                        response_text=text,
-                        confidence=1.0,
-                        reasoning="Final response from LLM",
-                        will_continue=False,
-                    )
-
-        return Action(
-            type=ActionType.ERROR,
-            reasoning="Could not understand LLM output format",
-            will_continue=False,
-        )
-
-    def execute_action(self, action: Action) -> Dict[str, Any]:
-        if action.type == ActionType.CALL_TOOL:
-            tool_name = action.tool_name
-            tool_args = action.tool_args or {}
-
-            if tool_name.lower() in ("bash", "shell") and not self.config.trust_shell_commands:
-                return {
-                    "success": False,
-                    "error": "Shell commands require confirmation (set trust_shell_commands=True)",
-                    "blocked": True,
-                }
-
-            # Security sandbox: check bash commands against blocklist/allowlist
-            if tool_name.lower() in ("bash", "shell"):
-                command = tool_args.get("command", "") if isinstance(tool_args, dict) else ""
-                if command:
-                    sandbox_result = self._check_command_safety(command)
-                    if not sandbox_result["allowed"]:
-                        return {
-                            "success": False,
-                            "error": sandbox_result["reason"],
-                            "blocked": True,
-                            "requires_confirmation": sandbox_result.get("requires_confirmation", False),
-                        }
-
-            result = self.executor.execute_tool(tool_name, tool_args)
-            return result
-
-        elif action.type == ActionType.RESPOND:
-            return {"success": True, "text": action.response_text}
-
-        elif action.type == ActionType.ERROR:
-            return {"success": False, "error": action.reasoning}
-
-        return {"success": False, "error": "Unknown action type"}
 
 
 # ─── Main Loop Engine ────────────────────────────────────────────────────
@@ -1104,7 +267,7 @@ class CodexLoop:
             try:
                 cb(msg, data or {})
             except Exception:
-                pass
+                _log.warning("Listener callback %s failed for msg=%s", cb, msg, exc_info=True)
 
     async def run_task(self, task: str, session_id: Optional[str] = None,
                        timeout_sec: Optional[float] = None) -> str:
@@ -1229,13 +392,13 @@ class CodexLoop:
                                 stream_callback=_stream_cb,
                             )
                         else:
-                            # No more fallbacks — set error and break
+                            # No more fallbacks -- set error and break
                             self.error = f"All models failed: {llm_err}"
                             self.status = "error: all models failed"
                             self._running = False
                             break
                     else:
-                        # Below threshold — log and continue to next iteration
+                        # Below threshold -- log and continue to next iteration
                         self._notify("llm_failure", {
                             "consecutive_failures": self._consecutive_failures,
                             "threshold": self.config.fallback_threshold,
@@ -1243,7 +406,7 @@ class CodexLoop:
                         })
                         continue
 
-                # Success — reset consecutive failure counter
+                # Success -- reset consecutive failure counter
                 self._consecutive_failures = 0
 
                 usage = response.get("usage", {})
@@ -1337,7 +500,7 @@ class CodexLoop:
                                 iteration=self._iteration,
                             )
                         except Exception:
-                            pass
+                            _log.warning("Failed to record final response training data", exc_info=True)
                         self.status = "completed"
                         self._running = False
                         final_text = action.response_text or ""
@@ -1414,7 +577,7 @@ class CodexLoop:
                                         source="tool_execution"
                                     )
                         except Exception:
-                            pass  # Don't let memory errors break tool execution
+                            _log.warning("Failed to store tool execution in memory", exc_info=True)
 
                     # Execute remaining pending calls from same LLM response
                     pending = getattr(self.decision_engine, '_pending_calls', [])
@@ -1471,7 +634,7 @@ class CodexLoop:
                             iteration=self._iteration,
                         )
                     except Exception:
-                        pass  # Don't let collection errors break the loop
+                        _log.warning("Failed to collect training data for iteration %d", self._iteration, exc_info=True)
 
                     if time.time() - self._last_save > self.config.auto_save_interval_sec:
                         self.session_mgr.checkpoint(self._current_session)
@@ -1503,7 +666,7 @@ class CodexLoop:
                 self._data_collector = data_collector
                 data_collector.save()
             except Exception:
-                pass
+                _log.warning("Failed to save training data collector", exc_info=True)
 
             self._current_session.status = "error" if self.error else "completed"
             self.session_mgr.update_session(self._current_session)
@@ -1621,25 +784,7 @@ async def run_automated(task: str, **config_kwargs) -> str:
     return await loop.run_task(task)
 
 
-# ─── Multi-Round Reasoning Engine ────────────────────────────────────────
-
-CHAIN_OF_THOUGHT_PROMPT = """You are an expert problem solver. Think step by step before taking action.
-
-For each task:
-1. ANALYZE: Break down the problem into components
-2. PLAN: Create a detailed step-by-step plan
-3. REASON: Think about potential challenges and solutions
-4. EXECUTE: Take action based on your reasoning
-
-Always show your thinking process before calling tools.
-
-Format your reasoning as:
-<thinking>
-[Your detailed analysis and planning here]
-</thinking>
-
-Then call the appropriate tools."""
-
+# ─── Enhanced Codex Loop ──────────────────────────────────────────────────
 
 class EnhancedCodexLoop(CodexLoop):
     """
@@ -1776,14 +921,15 @@ Identify:
 
             # Extract text from response
             output = response.get("output", [])
-            for item in output:
-                if item.get("type") == "message":
-                    content = item.get("content", [])
-                    for c in content:
-                        if isinstance(c, dict) and c.get("type") == "output_text":
-                            return c.get("text", "")
-
-            return "No reasoning output"
+            text = next(
+                (c.get("text", "")
+                 for item in output
+                 if item.get("type") == "message"
+                 for c in item.get("content", [])
+                 if isinstance(c, dict) and c.get("type") == "output_text"),
+                None,
+            )
+            return text if text is not None else "No reasoning output"
 
         except Exception as e:
             return f"Reasoning error: {str(e)}"
