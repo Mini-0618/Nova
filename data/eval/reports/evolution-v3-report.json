@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-06-09 06:52:13",
+  "cycles": [
+    {
+      "cycle": 1,
+      "total": 2,
+      "passed": 2,
+      "results": [
+        {
+          "task_id": "E47",
+          "passed": true,
+          "duration_s": 32.48,
+          "error": null,
+          "details": "all checks passed"
+        },
+        {
+          "task_id": "E50",
+          "passed": true,
+          "duration_s": 22.35,
+          "error": null,
+          "details": "all checks passed"
+        }
+      ]
+    },
+    {
+      "cycle": 2,
+      "total": 2,
+      "passed": 2,
+      "results": [
+        {
+          "task_id": "E47",
+          "passed": true,
+          "duration_s": 28.06,
+          "error": null,
+          "details": "all checks passed"
+        },
+        {
+          "task_id": "E50",
+          "passed": true,
+          "duration_s": 21.48,
+          "error": null,
+          "details": "all checks passed"
+        }
+      ]
+    },
+    {
+      "cycle": 3,
+      "total": 2,
+      "passed": 2,
+      "results": [
+        {
+          "task_id": "E47",
+          "passed": true,
+          "duration_s": 23.58,
+          "error": null,
+          "details": "all checks passed"
+        },
+        {
+          "task_id": "E50",
+          "passed": true,
+          "duration_s": 62.97,
+          "error": null,
+          "details": "all checks passed"
+        }
+      ]
+    }
+  ],
+  "lessons_recorded": 6,
+  "final_accuracy": "50/50 (100%)"
+}

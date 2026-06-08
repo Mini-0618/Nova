@@ -43,5 +43,53 @@
     "pattern": "sandbox_exec tool missing from TOOL_DEFINITIONS even though the tool exists",
     "fix": "Add the sandbox_exec function definition to the TOOL_DEFINITIONS list so the LLM knows it can use this tool for executing quick code snippets.",
     "source": "AUTONOMOUS_REPORT.md (Phase 4: Tool chain complete)"
+  },
+  {
+    "id": "evo-E47-c1",
+    "pattern": "Task E47: self_improve category",
+    "fix": "Ensure file creation uses Write tool, not description",
+    "category": "self_improve",
+    "source": "evolution_cycle",
+    "confidence": 0.9
+  },
+  {
+    "id": "evo-E50-c1",
+    "pattern": "Task E50: self_improve category",
+    "fix": "Ensure file creation uses Write tool, not description",
+    "category": "self_improve",
+    "source": "evolution_cycle",
+    "confidence": 0.9
+  },
+  {
+    "id": "evo-E47-c2",
+    "pattern": "Task E47: self_improve category",
+    "fix": "Ensure file creation uses Write tool, not description",
+    "category": "self_improve",
+    "source": "evolution_cycle",
+    "confidence": 0.9
+  },
+  {
+    "id": "evo-E50-c2",
+    "pattern": "Task E50: self_improve category",
+    "fix": "Ensure file creation uses Write tool, not description",
+    "category": "self_improve",
+    "source": "evolution_cycle",
+    "confidence": 0.9
+  },
+  {
+    "id": "evo-E47-c3",
+    "pattern": "Task E47: self_improve category",
+    "fix": "Ensure file creation uses Write tool, not description",
+    "category": "self_improve",
+    "source": "evolution_cycle",
+    "confidence": 0.9
+  },
+  {
+    "id": "evo-E50-c3",
+    "pattern": "Task E50: self_improve category",
+    "fix": "Ensure file creation uses Write tool, not description",
+    "category": "self_improve",
+    "source": "evolution_cycle",
+    "confidence": 0.9
   }
 ]
