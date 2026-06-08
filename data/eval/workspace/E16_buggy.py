@@ -1,4 +1,4 @@
-def add_item(item, lst=None):  # Fixed: use None instead of mutable default
+def add_item(item, lst=None):  # Fixed: mutable default
     if lst is None:
         lst = []
     lst.append(item)

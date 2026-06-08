@@ -123,7 +123,7 @@ class LoopConfig:
     # Context management
     max_context_tokens: int = 8000  # Max tokens in context window (1 token ~= 4 chars)
     # Token budget control
-    max_total_tokens: int = 50000  # Total token budget for a single run_task()
+    max_total_tokens: int = 100000  # Total token budget for a single run_task()
     # Security sandbox settings
     allowed_commands: List[str] = field(default_factory=list)  # if non-empty, only these are allowed
     blocked_commands: List[str] = field(default_factory=lambda: [
