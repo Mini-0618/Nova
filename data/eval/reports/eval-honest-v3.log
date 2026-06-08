@@ -52,4 +52,11 @@ line3
 [40/50] E40: Add config file support... FAIL (32.2s)
   -> test failed (exit 1): Traceback (most recent call last):
   File "D:\codex-local\data\eval\workspace\
-[41/50] E41: Fix tool calling format... 
+[41/50] E41: Fix tool calling format... FAIL (34.0s)
+  -> test failed (exit 4): 
+=================================== ERRORS ==================================
+[42/50] E42: Fix message trimming... FAIL (29.2s)
+  -> test failed (exit 2): 
+=================================== ERRORS ==================================
+[43/50] E43: Add API key validation... PASS (32.9s)
+[44/50] E44: Remove module-level side effects... 

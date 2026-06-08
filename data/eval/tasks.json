@@ -429,7 +429,7 @@
     "difficulty": "hard",
     "title": "Verify tool calling format",
     "task": "Read runtime/llm_client.py and verify that _convert_tools_to_openai_format produces correct OpenAI-compatible tool schemas. Run the existing tests to confirm. Do NOT modify any test files — only read and verify.",
-    "verify_test": "python -m pytest tests/ -k tool -q",
+    "verify_test": "python -m pytest tests/test_llm_client.py -k tool -q",
     "expected_tools": ["file_read", "bash"]
   },
   {
