@@ -49,6 +49,8 @@ class TaskResult:
     changed_wrong_files: bool = False
     patch_too_large: bool = False
     details: str = ""
+    quality_score: float = 0.0
+    quality_issues: int = 0
 
 
 @dataclass
@@ -64,12 +66,119 @@ class EvalReport:
     regression_rate: float = 0.0
     false_change_rate: float = 0.0
     human_intervention_rate: float = 0.0
+    avg_quality_score: float = 0.0
+    total_quality_issues: int = 0
     results: List[Dict[str, Any]] = field(default_factory=list)
+
+
+TRAINING_DIR = PROJECT_ROOT / "data" / "training"
 
 
 def load_tasks() -> List[Dict[str, Any]]:
     with open(TASKS_FILE, 'r', encoding='utf-8') as f:
         return json.load(f)
+
+
+def save_eval_training_data(
+    task: Dict[str, Any],
+    loop_result: str,
+    result: "TaskResult",
+    model: str = "deepseek-chat",
+) -> Path:
+    """Save eval task interaction as training data.
+
+    Appends one JSONL record per eval task to data/training/eval_{task_id}.jsonl.
+    Format: {task, messages, llm_response, tool_calls, success, tokens, ...}
+    """
+    TRAINING_DIR.mkdir(parents=True, exist_ok=True)
+    session_id = f"eval_{task['id']}_{time.strftime('%Y%m%d_%H%M%S')}"
+    file_path = TRAINING_DIR / f"{session_id}.jsonl"
+
+    entry = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "session_id": session_id,
+        "task_id": task["id"],
+        "category": task.get("category", ""),
+        "difficulty": task.get("difficulty", ""),
+        "task": task.get("task", "")[:1000],
+        "model": model,
+        "llm_response": str(loop_result)[:2000] if loop_result else "",
+        "success": result.passed,
+        "score": result.score,
+        "duration_s": result.duration_s,
+        "error": result.error or "",
+        "details": result.details[:500] if result.details else "",
+        "tools_used": result.tools_used,
+        "tool_calls_total": result.tool_calls_total,
+        "tool_calls_success": result.tool_calls_success,
+    }
+
+    try:
+        with open(file_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+    except Exception as e:
+        print(f"  [warn] Failed to save training data: {e}")
+
+    return file_path
+
+
+def run_quality_guard_on_results(task: Dict[str, Any]) -> Dict[str, Any]:
+    """Run quality_guard on files modified by an eval task.
+
+    Returns a dict with quality score and issue counts, or empty dict on failure.
+    """
+    try:
+        from skills.quality_guard import analyze_file
+    except ImportError:
+        return {}
+
+    # Check files that were set up or verified for this task
+    files_to_check = []
+    verify_file = task.get("verify_file")
+    if verify_file:
+        full_path = PROJECT_ROOT / verify_file
+        if full_path.exists() and full_path.suffix == ".py":
+            files_to_check.append(full_path)
+
+    setup_files = task.get("setup_files", {})
+    for rel_path in setup_files:
+        full_path = PROJECT_ROOT / rel_path
+        if full_path.exists() and full_path.suffix == ".py":
+            files_to_check.append(full_path)
+
+    if not files_to_check:
+        return {}
+
+    total_score = 0
+    total_issues = 0
+    details = []
+    checked = 0
+
+    for fpath in files_to_check:
+        try:
+            report = analyze_file(fpath)
+            total_score += report.score
+            total_issues += report.total_issues
+            checked += 1
+            details.append({
+                "file": str(fpath.relative_to(PROJECT_ROOT)),
+                "score": report.score,
+                "issues": report.total_issues,
+                "critical": report.critical,
+                "high": report.high,
+            })
+        except Exception:
+            continue
+
+    if checked == 0:
+        return {}
+
+    return {
+        "quality_score": round(total_score / checked, 1),
+        "total_issues": total_issues,
+        "files_checked": checked,
+        "details": details,
+    }
 
 
 def setup_workspace(task: Dict[str, Any]):
@@ -189,6 +298,7 @@ async def run_task_with_loop(task: Dict[str, Any], model: str = "deepseek-chat")
     )
 
     start_time = time.time()
+    loop_result = None
 
     try:
         # Setup
@@ -253,6 +363,21 @@ After completing the task, verify your work:
 
     finally:
         result.duration_s = round(time.time() - start_time, 2)
+
+    # Auto-collect training data (Task 1)
+    try:
+        save_eval_training_data(task, loop_result, result, model=model)
+    except Exception:
+        pass  # Don't let training data collection break eval
+
+    # Run quality guard (Task 5)
+    try:
+        qg = run_quality_guard_on_results(task)
+        if qg:
+            result.quality_score = qg.get("quality_score", 0.0)
+            result.quality_issues = qg.get("total_issues", 0)
+    except Exception:
+        pass  # Don't let quality guard break eval
 
     return result
 
@@ -381,6 +506,11 @@ def build_report(results: List[TaskResult]) -> EvalReport:
     report.false_change_rate = round(sum(1 for r in results if r.changed_wrong_files) / report.total_tasks * 100, 1) if report.total_tasks > 0 else 0
     report.human_intervention_rate = round(sum(1 for r in results if r.needed_human) / report.total_tasks * 100, 1) if report.total_tasks > 0 else 0
 
+    # Quality guard metrics
+    quality_scores = [r.quality_score for r in results if r.quality_score > 0]
+    report.avg_quality_score = round(sum(quality_scores) / len(quality_scores), 1) if quality_scores else 0.0
+    report.total_quality_issues = sum(r.quality_issues for r in results)
+
     report.results = [asdict(r) for r in results]
 
     return report
@@ -397,6 +527,9 @@ def print_report(report: EvalReport):
     print(f"  Regression Rate: {report.regression_rate}%")
     print(f"  False Change Rate: {report.false_change_rate}%")
     print(f"  Human Intervention: {report.human_intervention_rate}%")
+    if report.avg_quality_score > 0:
+        print(f"  Avg Quality Score: {report.avg_quality_score}/100")
+        print(f"  Total Quality Issues: {report.total_quality_issues}")
 
     print("\n  By Category:")
     for cat, stats in sorted(report.by_category.items()):
@@ -490,6 +623,17 @@ async def main():
     with open(report_path, 'w', encoding='utf-8') as f:
         json.dump(asdict(report), f, indent=2, ensure_ascii=False)
     print(f"\nReport saved to: {report_path}")
+
+    # Auto-extract lessons from failures (Task 2)
+    if not args.dry_run and not args.offline:
+        try:
+            from data.eval.auto_lessons import extract_lessons_from_report
+            print("\nExtracting lessons from failures...")
+            new_lessons = await extract_lessons_from_report(str(report_path), model=args.model)
+            if new_lessons:
+                print(f"  Added {len(new_lessons)} new lessons")
+        except Exception as e:
+            print(f"  [warn] Auto-lesson extraction failed: {e}")
 
 
 if __name__ == "__main__":
