@@ -1,33 +1,24 @@
-def _calculate_item_total(item):
-    """Calculate the line total for a single item."""
-    if 'price' not in item or 'qty' not in item:
-        return 0
-    if item['qty'] <= 0:
-        return 0
-    return item['price'] * item['qty']
-
-
-def _apply_discount(total, order):
-    """Apply discount to the total if present."""
-    if 'discount' in order:
-        return total * (1 - order['discount'])
-    return total
-
-
 def process_order(order):
-    if not order:
+    if order:
+        if 'items' in order:
+            if len(order['items']) > 0:
+                total = 0
+                for item in order['items']:
+                    if 'price' in item and 'qty' in item:
+                        if item['qty'] > 0:
+                            total += item['price'] * item['qty']
+                if total > 0:
+                    if 'discount' in order:
+                        total *= (1 - order['discount'])
+                    return {'status': 'ok', 'total': total}
+                else:
+                    return {'status': 'error', 'msg': 'empty cart'}
+            else:
+                return {'status': 'error', 'msg': 'no items'}
+        else:
+            return {'status': 'error', 'msg': 'missing items'}
+    else:
         return {'status': 'error', 'msg': 'no order'}
-    if 'items' not in order:
-        return {'status': 'error', 'msg': 'missing items'}
-    if len(order['items']) == 0:
-        return {'status': 'error', 'msg': 'no items'}
-
-    total = sum(_calculate_item_total(item) for item in order['items'])
-    if total <= 0:
-        return {'status': 'error', 'msg': 'empty cart'}
-
-    total = _apply_discount(total, order)
-    return {'status': 'ok', 'total': total}
 
 if __name__ == '__main__':
     assert process_order(None)['status'] == 'error'

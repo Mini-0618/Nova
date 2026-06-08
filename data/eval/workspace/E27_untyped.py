@@ -1,10 +1,10 @@
-def add(a, b):
+def add(a: int, b: int) -> int:
     return a + b
 
-def greet(name):
+def greet(name: str) -> str:
     return f'Hello, {name}'
 
-def is_even(n):
+def is_even(n: int) -> bool:
     return n % 2 == 0
 
 if __name__ == '__main__':

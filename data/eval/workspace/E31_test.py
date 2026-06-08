@@ -1,27 +1,28 @@
-"""Comprehensive test suite for E31_target.py using pytest.
-
-Tests cover:
-- fibonacci: normal cases, edge cases (0, 1), large values, error cases (negative input)
-- is_palindrome: normal cases, case insensitivity, whitespace handling, edge cases (empty, single char), non-palindromes
-"""
+"""Tests for E31_target.py — fibonacci and is_palindrome functions."""
 
 import pytest
 from E31_target import fibonacci, is_palindrome
 
 
-# =============================================================================
-# Tests for fibonacci(n)
-# =============================================================================
+# =====================
+# Tests for fibonacci
+# =====================
 
 class TestFibonacci:
-    """Test suite for the fibonacci function."""
+    """Tests for the fibonacci(n) function."""
 
     # --- Normal cases ---
 
-    def test_fibonacci_small_values(self):
-        """Test fibonacci for small known values."""
+    def test_fib_zero(self):
+        """fibonacci(0) should return 0."""
         assert fibonacci(0) == 0
+
+    def test_fib_one(self):
+        """fibonacci(1) should return 1."""
         assert fibonacci(1) == 1
+
+    def test_fib_small_numbers(self):
+        """fibonacci for small n values."""
         assert fibonacci(2) == 1
         assert fibonacci(3) == 2
         assert fibonacci(4) == 3
@@ -32,127 +33,170 @@ class TestFibonacci:
         assert fibonacci(9) == 34
         assert fibonacci(10) == 55
 
-    def test_fibonacci_larger_values(self):
-        """Test fibonacci for larger inputs."""
+    def test_fib_medium_number(self):
+        """fibonacci for a medium-sized n."""
         assert fibonacci(20) == 6765
         assert fibonacci(30) == 832040
-        assert fibonacci(35) == 9227465
 
     # --- Edge cases ---
 
-    def test_fibonacci_zero(self):
-        """Edge case: fibonacci(0) should return 0."""
-        assert fibonacci(0) == 0
+    def test_fib_large_number(self):
+        """fibonacci for a larger n (within reasonable range)."""
+        result = fibonacci(50)
+        # Known value: fib(50) = 12586269025
+        assert result == 12586269025
 
-    def test_fibonacci_one(self):
-        """Edge case: fibonacci(1) should return 1."""
-        assert fibonacci(1) == 1
+    def test_fib_very_large(self):
+        """fibonacci for n=100 (big integer)."""
+        result = fibonacci(100)
+        expected = 354224848179261915075
+        assert result == expected
 
-    def test_fibonacci_two(self):
-        """Edge case: fibonacci(2) should return 1."""
-        assert fibonacci(2) == 1
+    def test_fib_consecutive_relationship(self):
+        """Verify fib(n+1) >= fib(n) for monotonicity."""
+        prev = -1
+        for n in range(0, 20):
+            cur = fibonacci(n)
+            assert cur >= prev
+            prev = cur
 
     # --- Error cases ---
 
-    def test_fibonacci_negative_raises_value_error(self):
-        """Error case: negative input should raise ValueError."""
+    def test_fib_negative_raises_value_error(self):
+        """fibonacci with negative n should raise ValueError."""
         with pytest.raises(ValueError, match='n must be non-negative'):
             fibonacci(-1)
 
-    def test_fibonacci_large_negative_raises_value_error(self):
-        """Error case: large negative input should raise ValueError."""
+    def test_fib_negative_large_raises_value_error(self):
+        """fibonacci with a large negative n should raise ValueError."""
         with pytest.raises(ValueError, match='n must be non-negative'):
             fibonacci(-100)
 
-    def test_fibonacci_invalid_type_raises_type_error(self):
-        """Error case: non-integer input should raise TypeError."""
+    def test_fib_float_raises_type_error(self):
+        """fibonacci with a float should raise TypeError."""
         with pytest.raises(TypeError):
-            fibonacci("string")
+            fibonacci(5.5)
+
+    def test_fib_string_raises_type_error(self):
+        """fibonacci with a string should raise TypeError."""
         with pytest.raises(TypeError):
-            fibonacci(3.14)
+            fibonacci("10")
+
+    def test_fib_none_raises_type_error(self):
+        """fibonacci with None should raise TypeError."""
         with pytest.raises(TypeError):
             fibonacci(None)
 
 
-# =============================================================================
-# Tests for is_palindrome(s)
-# =============================================================================
+# =====================
+# Tests for is_palindrome
+# =====================
 
 class TestIsPalindrome:
-    """Test suite for the is_palindrome function."""
+    """Tests for the is_palindrome(s) function."""
 
     # --- Normal cases ---
 
-    def test_is_palindrome_simple(self):
-        """Test simple palindromes."""
+    def test_palindrome_simple(self):
+        """Simple palindrome word."""
         assert is_palindrome("racecar") is True
-        assert is_palindrome("madam") is True
-        assert is_palindrome("level") is True
-        assert is_palindrome("radar") is True
 
-    def test_is_palindrome_not_palindrome(self):
-        """Test that non-palindromes return False."""
+    def test_palindrome_another(self):
+        """Another palindrome word."""
+        assert is_palindrome("madam") is True
+
+    def test_non_palindrome(self):
+        """Non-palindrome word should return False."""
         assert is_palindrome("hello") is False
-        assert is_palindrome("world") is False
-        assert is_palindrome("python") is False
+
+    def test_palindrome_numeric_string(self):
+        """Numeric palindrome string."""
+        assert is_palindrome("12321") is True
+
+    def test_non_palindrome_numeric(self):
+        """Non-palindrome numeric string."""
+        assert is_palindrome("12345") is False
 
     # --- Case insensitivity ---
 
-    def test_is_palindrome_case_insensitive(self):
-        """Test that palindrome detection is case-insensitive."""
+    def test_palindrome_mixed_case(self):
+        """is_palindrome should be case-insensitive."""
         assert is_palindrome("Racecar") is True
         assert is_palindrome("MadAm") is True
-        assert is_palindrome("RADAR") is True
 
-    def test_is_palindrome_mixed_case(self):
-        """Test palindromes with mixed casing."""
-        assert is_palindrome("Aba") is True
-        assert is_palindrome("Noon") is True
+    def test_palindrome_uppercase(self):
+        """All-uppercase palindrome."""
+        assert is_palindrome("RACECAR") is True
 
     # --- Whitespace handling ---
 
-    def test_is_palindrome_with_whitespace(self):
-        """Test palindromes with leading/trailing whitespace."""
+    def test_palindrome_with_leading_trailing_spaces(self):
+        """is_palindrome should strip leading/trailing whitespace."""
         assert is_palindrome("  racecar  ") is True
-        assert is_palindrome("  madam") is True
-        assert is_palindrome("level  ") is True
+        assert is_palindrome("  madam  ") is True
 
-    def test_is_palindrome_whitespace_only(self):
-        """Edge case: whitespace-only strings are palindromes."""
-        assert is_palindrome("   ") is True
-        assert is_palindrome(" ") is True
-        assert is_palindrome("") is True
+    def test_palindrome_with_tabs(self):
+        """is_palindrome should strip tabs."""
+        assert is_palindrome("\tracecar\t") is True
+
+    def test_palindrome_with_newlines(self):
+        """is_palindrome should strip newlines."""
+        assert is_palindrome("\nracecar\n") is True
 
     # --- Edge cases ---
 
-    def test_is_palindrome_empty_string(self):
-        """Edge case: empty string is a palindrome."""
+    def test_empty_string(self):
+        """Empty string should be a palindrome."""
         assert is_palindrome("") is True
 
-    def test_is_palindrome_single_character(self):
-        """Edge case: single character is a palindrome."""
+    def test_single_character(self):
+        """Single character should be a palindrome."""
         assert is_palindrome("a") is True
         assert is_palindrome("Z") is True
-        assert is_palindrome("1") is True
 
-    def test_is_palindrome_numbers(self):
-        """Test palindromes with numeric strings."""
-        assert is_palindrome("12321") is True
-        assert is_palindrome("12345") is False
-        assert is_palindrome("1001") is True
+    def test_single_space(self):
+        """Single space (after strip becomes empty) should be a palindrome."""
+        assert is_palindrome(" ") is True
 
-    def test_is_palindrome_special_characters(self):
-        """Test palindromes with special characters."""
+    def test_whitespace_only(self):
+        """Whitespace-only string (after strip becomes empty) should be a palindrome."""
+        assert is_palindrome("   ") is True
+
+    def test_special_characters(self):
+        """Palindrome with special characters."""
         assert is_palindrome("!@#@!") is True
-        assert is_palindrome("!@#$%") is False
+        assert is_palindrome("!@#") is False
+
+    def test_unicode_palindrome(self):
+        """Palindrome with unicode characters."""
+        assert is_palindrome("ñ") is True
+        assert is_palindrome("aña") is True
+        assert is_palindrome("abcñcba") is True
+
+    def test_two_different_chars(self):
+        """Two different characters should not be a palindrome."""
+        assert is_palindrome("ab") is False
+
+    def test_two_same_chars(self):
+        """Two identical characters should be a palindrome."""
+        assert is_palindrome("aa") is True
+
+    def test_even_length_palindrome(self):
+        """Even-length palindrome."""
+        assert is_palindrome("abba") is True
+
+    def test_odd_length_palindrome(self):
+        """Odd-length palindrome."""
+        assert is_palindrome("abcba") is True
 
     # --- Error cases ---
 
-    def test_is_palindrome_non_string_input(self):
-        """Error case: non-string input should raise AttributeError or TypeError."""
-        with pytest.raises((AttributeError, TypeError)):
-            is_palindrome(12321)
-        with pytest.raises((AttributeError, TypeError)):
+    def test_none_raises_type_error(self):
+        """is_palindrome with None should raise TypeError."""
+        with pytest.raises(TypeError):
             is_palindrome(None)
-        with pytest.raises((AttributeError, TypeError)):
-            is_palindrome(True)
+
+    def test_integer_raises_type_error(self):
+        """is_palindrome with an integer should raise TypeError."""
+        with pytest.raises(TypeError):
+            is_palindrome(12321)

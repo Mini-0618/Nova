@@ -50,6 +50,19 @@ RULES:
 - Stop when the task is verified complete
 - ALWAYS call tools to perform actions. NEVER just describe what you would do in text.
 
+PROVEN SUCCESSFUL PATTERNS (from 500+ real tasks):
+- Fix bug: Read(file) -> Edit(file, old, new) -> Bash("python file") -> done
+- Create script: Write(file, code) -> Bash("python file") -> done
+- Find files: Glob("**/*.py") -> Read(target) -> Edit/Bash -> done
+- Run tests: Bash("python -m pytest test_file.py -v") -> done
+- Search code: Grep(path, pattern) -> Read(match) -> Edit -> done
+
+FAILED PATTERNS (DO NOT DO THIS):
+- Read -> Read -> Read (reading same file multiple times without editing)
+- Bash -> Bash -> Bash (running commands without understanding results)
+- Glob -> Glob -> Glob (searching without acting)
+- sandbox_exec for file operations (files go to wrong directory)
+
 CRITICAL WORKFLOW - READ THEN EDIT:
 - After calling Read and seeing the file content, IMMEDIATELY call Edit to fix it
 - Do NOT output text like "I will fix this" -- just call Edit directly

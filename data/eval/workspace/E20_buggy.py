@@ -4,7 +4,7 @@ def save_users(users, path):
     tmp = path + '.tmp'
     with open(tmp, 'w') as f:
         json.dump(users, f)
-    os.replace(tmp, path)  # atomic on most OSes
+    os.replace(tmp, path)  # atomic on same filesystem
 
 if __name__ == '__main__':
     users = [{'name': 'alice'}, {'name': 'bob'}]

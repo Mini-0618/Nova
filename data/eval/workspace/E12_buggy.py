@@ -1,5 +1,5 @@
 def check_password(pwd):
-    return pwd.lower() == 'admin123'  # case-insensitive comparison
+    return pwd == 'admin123'  # FIXED: case mismatch
 
 if __name__ == '__main__':
     assert check_password('admin123') == True, 'Should accept admin123'
