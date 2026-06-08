@@ -5,12 +5,7 @@
   "min_improve": 0.01,
   "max_cycles": 3,
   "timeout_sec": 600,
-  "commands": {
-    "run_task": "{python} -m codex_loop run --prompt {prompt} --out {task_out}",
-    "eval": "{python} -m eval_system run --input {task_out} --out {eval_out}",
-    "analyze_failure": "{python} -m failure_analyzer --eval {eval_out} --out {lessons_out}",
-    "improve_prompt": "{python} -m evolution_system improve --prompt {prompt} --lessons {lessons_out} --out {candidate_prompt}"
-  },
+  "model": "deepseek-chat",
   "score_keys": [
     "score",
     "accuracy",
