@@ -197,8 +197,16 @@ async def run_task_with_loop(task: Dict[str, Any], model: str = "deepseek-chat")
         # Run through CodexLoop
         from runtime.loop import CodexLoop, LoopConfig
 
+        # Auto-detect provider from model name
+        provider = ""
+        if "deepseek" in model:
+            provider = "deepseek"
+        elif "qwen" in model or "mimo" in model:
+            provider = "openai"  # Use OPENAI_BASE_URL
+
         config = LoopConfig(
             model=model,
+            provider=provider,
             max_iterations=15,
         )
 

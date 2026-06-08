@@ -48,7 +48,30 @@ RULES:
 - Check output with Read or Bash
 - Never describe what you would do -- just do it
 - Stop when the task is verified complete
-- ALWAYS call tools to perform actions. NEVER just describe what you would do in text."""
+- ALWAYS call tools to perform actions. NEVER just describe what you would do in text.
+
+CRITICAL WORKFLOW - READ THEN EDIT:
+- After calling Read and seeing the file content, IMMEDIATELY call Edit to fix it
+- Do NOT output text like "I will fix this" -- just call Edit directly
+- Do NOT call Read twice on the same file -- read once, then edit
+- The pattern is: Read -> Edit -> Bash (verify) -> done
+- If you see a bug in the code, call Edit RIGHT NOW, not in the next message
+
+EXAMPLE - Fixing a bug:
+  1. Read("code.py") → see: def sum(a, b): return a - b
+  2. IMMEDIATELY call Edit("code.py", "return a - b", "return a + b")
+  3. Bash("python code.py") → verify it works
+  4. Done. No text output needed.
+
+WRONG way (DO NOT DO THIS):
+  Read("code.py")
+  "I see the bug, the subtraction should be addition. Let me fix it."
+  Edit("code.py", ...)
+
+RIGHT way (DO THIS):
+  Read("code.py")
+  Edit("code.py", "return a - b", "return a + b")
+  Bash("python code.py")"""
 
 CHAIN_OF_THOUGHT_PROMPT = """You are an expert problem solver. Think step by step before taking action.
 
@@ -179,13 +202,19 @@ class DecisionEngine:
         lower = text.lower()
         return any([
             text.startswith("<"), "tool_calls" in text, "invoke name=" in text,
-            lower.startswith(("i'll ", "i will ", "let me ", "here's ", "first, ", "to fix")),
+            lower.startswith(("i'll ", "i will ", "let me ", "here's ", "first, ", "to fix",
+                              "now let me", "i need to", "i should", "the fix is",
+                              "looking at", "after reading", "i can see")),
             "```python" in text and len(text) > 200,
             "i would " in lower and "tool" in lower,
             "here is the code" in lower, "here's the code" in lower,
             "the following code" in lower,
             "you can use" in lower and len(text) > 100,
             "step 1:" in lower and "step 2:" in lower,
+            "i've read" in lower and "now" in lower,
+            "the issue is" in lower and len(text) > 100,
+            "the bug is" in lower and "fix" in lower,
+            "i notice" in lower and "change" in lower,
         ])
 
     def _handle_message_item(self, item: Dict) -> Optional[Action]:
