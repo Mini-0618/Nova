@@ -159,6 +159,38 @@
       "details": "all checks passed",
       "quality_score": 0.0,
       "quality_issues": 0
+    },
+    {
+      "task_id": "E11",
+      "category": "bugfix",
+      "difficulty": "easy",
+      "title": "Fix off-by-one error",
+      "passed": true,
+      "score": 1,
+      "error": null,
+      "duration_s": 27.69,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "details": "all checks passed",
+      "quality_score": 88.0,
+      "quality_issues": 6
+    },
+    {
+      "task_id": "E12",
+      "category": "bugfix",
+      "difficulty": "easy",
+      "title": "Fix string comparison",
+      "passed": true,
+      "score": 1,
+      "error": null,
+      "duration_s": 12.99,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "details": "all checks passed",
+      "quality_score": 90.0,
+      "quality_issues": 5
     }
   ],
   "completed_ids": [
@@ -168,9 +200,11 @@
     "E02",
     "E01",
     "E09",
+    "E11",
     "E07",
     "E06",
     "E03",
+    "E12",
     "E05"
   ]
 }
