@@ -1,55 +1,56 @@
+"""Tests for error handling in E35_errors.py"""
 import pytest
 from E35_errors import BankAccount, InsufficientFunds
 
 
-class TestBankAccount:
-    def test_initial_balance(self):
-        """Test default and custom initial balance."""
-        account = BankAccount()
-        assert account.balance == 0
-
-        account = BankAccount(100)
-        assert account.balance == 100
-
-    def test_withdraw_success(self):
-        """Test successful withdrawal reduces balance."""
-        account = BankAccount(100)
-        result = account.withdraw(30)
-        assert result == 70
-        assert account.balance == 70
+class TestBankAccountErrors:
+    """Test that the right exceptions are raised with the right messages."""
 
     def test_withdraw_negative_amount_raises_value_error(self):
-        """Test that withdrawing a negative amount raises ValueError."""
+        """Withdrawing a negative amount should raise ValueError."""
         account = BankAccount(100)
         with pytest.raises(ValueError) as exc_info:
-            account.withdraw(-10)
+            account.withdraw(-50)
         assert str(exc_info.value) == 'Amount must be positive'
 
     def test_withdraw_zero_amount_raises_value_error(self):
-        """Test that withdrawing zero raises ValueError."""
+        """Withdrawing zero should raise ValueError."""
         account = BankAccount(100)
         with pytest.raises(ValueError) as exc_info:
             account.withdraw(0)
         assert str(exc_info.value) == 'Amount must be positive'
 
-    def test_withdraw_exceeds_balance_raises_insufficient_funds(self):
-        """Test that withdrawing more than balance raises InsufficientFunds."""
+    def test_withdraw_more_than_balance_raises_insufficient_funds(self):
+        """Withdrawing more than balance should raise InsufficientFunds."""
         account = BankAccount(50)
         with pytest.raises(InsufficientFunds) as exc_info:
             account.withdraw(100)
         assert str(exc_info.value) == 'Cannot withdraw 100, balance is 50'
 
-    def test_insufficient_funds_is_exception(self):
-        """Test that InsufficientFunds is a subclass of Exception."""
+    def test_withdraw_exact_balance_succeeds(self):
+        """Withdrawing exactly the balance should succeed."""
+        account = BankAccount(100)
+        result = account.withdraw(100)
+        assert result == 0
+        assert account.balance == 0
+
+    def test_withdraw_less_than_balance_succeeds(self):
+        """Withdrawing less than balance should succeed."""
+        account = BankAccount(100)
+        result = account.withdraw(30)
+        assert result == 70
+        assert account.balance == 70
+
+    def test_insufficient_funds_is_exception_subclass(self):
+        """InsufficientFunds should be a proper Exception subclass."""
         assert issubclass(InsufficientFunds, Exception)
 
-    def test_balance_unchanged_on_error(self):
-        """Test that balance is not modified when an error is raised."""
-        account = BankAccount(50)
-        with pytest.raises(ValueError):
-            account.withdraw(-5)
-        assert account.balance == 50
-
+    def test_multiple_withdrawals_until_empty(self):
+        """Multiple withdrawals should work correctly, and overdrawing at the end should fail."""
+        account = BankAccount(100)
+        account.withdraw(40)
+        assert account.balance == 60
+        account.withdraw(60)
+        assert account.balance == 0
         with pytest.raises(InsufficientFunds):
-            account.withdraw(100)
-        assert account.balance == 50
+            account.withdraw(1)

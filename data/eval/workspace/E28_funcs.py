@@ -14,14 +14,14 @@ class Counter:
     def reset(self):
         self.count = 0
 
-
 if __name__ == '__main__':
-    counter = Counter()
-    counter.increment()
-    counter.increment()
-    assert counter.get_count() == 2
-    counter.decrement()
-    assert counter.get_count() == 1
-    counter.reset()
-    assert counter.get_count() == 0
+    c = Counter()
+    c.reset()
+    c.increment()
+    c.increment()
+    assert c.get_count() == 2
+    c.decrement()
+    assert c.get_count() == 1
+    c.reset()
+    assert c.get_count() == 0
     print('PASS')

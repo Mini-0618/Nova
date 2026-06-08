@@ -1,8 +1,13 @@
 import json
+import os
 
-with open('config.json') as f:
-    config = json.load(f)
+config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+try:
+    with open(config_path) as f:
+        config = json.load(f)
+except FileNotFoundError:
+    config = {}
 
-greeting = config['greeting']
-max_retries = config['max_retries']
+greeting = config.get('greeting', 'Hello')
+max_retries = config.get('max_retries', 5)
 print(f'{greeting}! Will retry {max_retries} times')

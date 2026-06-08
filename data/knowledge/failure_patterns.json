@@ -1,0 +1,150 @@
+{
+  "version": "1.0",
+  "created_at": "2026-06-09",
+  "description": "Nova's failure pattern library - learned from 50+ eval runs",
+  "patterns": [
+    {
+      "id": "FP001",
+      "name": "File Not Created",
+      "category": "file_io",
+      "symptom": "verify_file check fails: file not found",
+      "root_cause": "LLM describes what to do instead of actually writing the file. Tool call was text, not a real Write call.",
+      "detection": "If verify_file exists in task and file doesn't exist after run",
+      "fix_strategy": "Remind model to USE tools, not describe them. Inject _TOOL_USE_REMINDER.",
+      "examples": ["E01", "E21", "E24", "E25"],
+      "severity": "high",
+      "frequency": 8
+    },
+    {
+      "id": "FP002",
+      "name": "Test Assertion Mismatch",
+      "category": "test_writing",
+      "symptom": "test failed: assertion error or unexpected output",
+      "root_cause": "Model writes tests that don't match the expected behavior, or misreads the spec.",
+      "detection": "verify_test fails with AssertionError or wrong output",
+      "fix_strategy": "Read the spec carefully. Run the target code first to understand behavior.",
+      "examples": ["E33", "E35"],
+      "severity": "medium",
+      "frequency": 4
+    },
+    {
+      "id": "FP003",
+      "name": "Import Error",
+      "category": "multi_file",
+      "symptom": "ModuleNotFoundError or ImportError",
+      "root_cause": "Wrong module name in import, or missing __init__.py",
+      "detection": "verify_test fails with ImportError traceback",
+      "fix_strategy": "Check actual file names vs import statements. Ensure __init__.py exists.",
+      "examples": ["E36", "E39"],
+      "severity": "high",
+      "frequency": 3
+    },
+    {
+      "id": "FP004",
+      "name": "Context Overflow Loop",
+      "category": "agent_loop",
+      "symptom": "Task runs out of iterations or tokens without completing",
+      "root_cause": "Accumulated tool results fill context window. Model keeps re-reading same files.",
+      "detection": "Token budget exceeded or max_iterations reached",
+      "fix_strategy": "Smart message trimming at 80% threshold. Preserve recent rounds only.",
+      "examples": ["E48", "E49"],
+      "severity": "critical",
+      "frequency": 5
+    },
+    {
+      "id": "FP005",
+      "name": "Read Loop Stuck",
+      "category": "agent_loop",
+      "symptom": "Model reads the same file multiple times without making changes",
+      "root_cause": "Model loses track of what it already read. Context window pushes out earlier reads.",
+      "detection": "Multiple consecutive Read calls on same path",
+      "fix_strategy": "Detect duplicate reads in decision engine. Skip if already in recent context.",
+      "examples": ["E42", "E44", "E45"],
+      "severity": "high",
+      "frequency": 6
+    },
+    {
+      "id": "FP006",
+      "name": "Wrong Fix Applied",
+      "category": "bugfix",
+      "symptom": "Model modifies the file but the bug isn't fixed or a new bug is introduced",
+      "root_cause": "Model misunderstands the bug. Applies superficial fix without running tests.",
+      "detection": "verify_test still fails after edit",
+      "fix_strategy": "Always run the test after fixing. If still failing, re-read the error message.",
+      "examples": ["E17", "E29"],
+      "severity": "medium",
+      "frequency": 3
+    },
+    {
+      "id": "FP007",
+      "name": "Output Capture Failure",
+      "category": "cli",
+      "symptom": "Expected output not found in file or stdout",
+      "root_cause": "Model runs command but doesn't redirect output to file, or captures stderr instead of stdout.",
+      "detection": "verify_file exists but doesn't contain expected text",
+      "fix_strategy": "Explicitly redirect stdout to file. Use subprocess capture_output.",
+      "examples": ["E21", "E23", "E25"],
+      "severity": "medium",
+      "frequency": 4
+    },
+    {
+      "id": "FP008",
+      "name": "Config Not Read",
+      "category": "multi_file",
+      "symptom": "Output shows hardcoded values instead of config values",
+      "root_cause": "Model modifies main.py but doesn't actually add json.load() call",
+      "detection": "verify_output_contains fails - shows old hardcoded value",
+      "fix_strategy": "Read config.json first, then modify main.py to load it.",
+      "examples": ["E40"],
+      "severity": "medium",
+      "frequency": 2
+    },
+    {
+      "id": "FP009",
+      "name": "Test Discovery Failure",
+      "category": "agent_loop",
+      "symptom": "pytest finds 0 tests or runs wrong tests",
+      "root_cause": "Test function names don't follow pytest conventions, or wrong file path.",
+      "detection": "verify_test returns 'no tests ran'",
+      "fix_strategy": "Ensure test functions start with 'test_'. Use correct file path.",
+      "examples": ["E41"],
+      "severity": "high",
+      "frequency": 2
+    },
+    {
+      "id": "FP010",
+      "name": "Windows Path Issues",
+      "category": "cli",
+      "symptom": "File not found or permission error on Windows",
+      "root_cause": "Forward/backslash confusion, or encoding issues with Chinese paths.",
+      "detection": "FileNotFoundError with mixed path separators",
+      "fix_strategy": "Use os.path.join() or pathlib. Use encoding='utf-8' for open().",
+      "examples": ["E17", "E22"],
+      "severity": "medium",
+      "frequency": 3
+    }
+  ],
+  "anti_patterns": [
+    {
+      "id": "AP001",
+      "name": "Describe Instead of Do",
+      "description": "Model writes 'I will create a file...' instead of calling Write tool",
+      "trigger": "When model is uncertain about the task",
+      "prevention": "System prompt: 'Do not describe. Use tools directly.'"
+    },
+    {
+      "id": "AP002",
+      "name": "Read-Read-Read Loop",
+      "description": "Model reads the same file 3+ times without editing",
+      "trigger": "When context window pushes out earlier read results",
+      "prevention": "Smart trimming preserves recent tool results. Detect duplicate reads."
+    },
+    {
+      "id": "AP003",
+      "name": "Ignore Test Output",
+      "description": "Model runs test, sees failure, but applies wrong fix",
+      "trigger": "When error message is long or complex",
+      "prevention": "Extract key error line from test output and highlight it."
+    }
+  ]
+}

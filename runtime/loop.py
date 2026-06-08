@@ -252,23 +252,15 @@ class _CodexLoopHelpers:
         return msg
 
     def _enforce_context_window(self, messages: List[Dict]) -> List[Dict]:
-        """Smart context window enforcement.
+        """Enforce context window limit using shared trimming logic from message_manager.
 
-        Triggers at 80% threshold. Preserves system prompt + recent 5 rounds.
-        Summarizes old tool results, drops oldest rounds if still over limit.
+        Delegates to _trim_old_rounds() which handles smart trimming with
+        80% threshold, recent-round preservation, and tool result summarization.
         """
         if len(messages) <= 2:
             return messages
         max_chars = self.config.max_context_tokens * 4 if self.config.max_context_tokens > 0 else MAX_MESSAGES_CHARS
-        total_chars = sum(_msg_char_len(m) for m in messages)
-
-        # Only trim when above threshold (80% of limit)
-        threshold = int(max_chars * TRIM_THRESHOLD)
-        if total_chars <= threshold:
-            return messages
-
         system_msg, recent = messages[0], messages[1:]
-        # Use smart trimming from message_manager
         recent = _trim_old_rounds(system_msg, recent, max_chars)
         return [system_msg] + recent
 

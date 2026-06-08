@@ -1,18 +1,13 @@
 import json, os, tempfile
 
 def save_users(users, path):
-    # Atomic write: write to temp file, then rename
-    tmp = tempfile.NamedTemporaryFile(mode='w', dir=os.path.dirname(path) or '.', delete=False, suffix='.tmp')
+    tmp = tempfile.NamedTemporaryFile('w', dir=os.path.dirname(path), delete=False)
     try:
         json.dump(users, tmp)
         tmp.close()
         os.replace(tmp.name, path)
     except:
-        # Clean up temp file on failure
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
+        os.unlink(tmp.name)
         raise
 
 if __name__ == '__main__':

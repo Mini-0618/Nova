@@ -50,7 +50,7 @@ assert len(s2.messages[1]["content"]) == 2000, f"Large message content should be
 assert s2.messages[2]["content"] == "world", f"Third message should be 'world', got {s2.messages[2]['content']}"
 assert s2.messages[2].get("truncated") is not True, "Small message should NOT be truncated"
 
-print("\n✓ PASS: Only the oversized message was truncated, others kept intact.")
+print("\nPASS: Only the oversized message was truncated, others kept intact.")
 m.close()
 
 # Cleanup

@@ -1,62 +1,47 @@
 [
   {
-    "pattern": "ToolExecutor defaults workspace to D:/ (drive root) instead of project directory, causing LLM to operate on wrong files",
-    "fix": "Set ToolExecutor default workspace to project directory",
-    "source": "autonomous_report.md"
+    "pattern": "UnicodeEncodeError: 'gbk' codec can't encode character '\\u2713' in position",
+    "fix": "Avoid using Unicode characters like ✓ (\\u2713) in output when running on Windows with GBK encoding. Replace with ASCII alternatives like '[OK]' or 'v'.",
+    "source": "AUTONOMOUS_REPORT.md (Task 1/28 CRASHED)"
   },
   {
-    "pattern": "File reads >20K chars overflow the context window, causing token limit errors",
-    "fix": "Truncate file read results exceeding 20K characters before sending to LLM",
-    "source": "autonomous_report.md"
+    "pattern": "LLM API error 400: 'An assistant message with tool_calls must be followed by tool messages responding to each tool_call_id' with tool_call_id 'unknown'",
+    "fix": "Ensure that when the LLM returns tool_calls, the code properly assigns a valid tool_call_id and sends corresponding tool result messages back. The 'unknown' ID indicates the code is not capturing the actual tool_call_id from the LLM response.",
+    "source": "AUTONOMOUS_REPORT.md (Tasks 2, 7, 11, 13, 14, 15, 17, 18, 19, 20, 22)"
   },
   {
-    "pattern": "Token budget of 50K max_total_tokens too low for multi-step tasks, causing premature termination",
-    "fix": "Increase max_total_tokens default from 50K to 100K (eval) or 200K",
-    "source": "autonomous_report.md"
+    "pattern": "LLM API error 400: tool_call_id mismatch with specific ID (e.g., 'call_1659996352832')",
+    "fix": "When processing tool results, use the exact tool_call_id returned by the LLM in the tool_calls array. Each tool result message must reference the correct tool_call_id from the assistant message.",
+    "source": "AUTONOMOUS_REPORT.md (Task 16/28)"
   },
   {
-    "pattern": "Untrimmed messages cause context overflow (1.8M tokens to 1M limit model) when tool results accumulate across iterations",
-    "fix": "Enforce context window BEFORE the LLM call in _run_iteration(), not just after",
-    "source": "autonomous_report.md"
+    "pattern": "DeepSeek model in CodexLoop returns text descriptions instead of structured tool_calls",
+    "fix": "Shorten the system prompt, remove verbose descriptions, and enforce strict formatting rules (e.g., 'response must be ONLY tool_calls JSON'). This is a prompt alignment issue, not a code bug.",
+    "source": "STATUS.md (Loop's known issues)"
   },
   {
-    "pattern": "Workspace pollution from previous tasks — LLM finds leftover files and misses the actual target file (E08)",
-    "fix": "Clean workspace between eval tasks to prevent stale file interference",
-    "source": "autonomous_report.md"
+    "pattern": "DeepSeek returns multiple tool_calls but code only processes the first one",
+    "fix": "Collect all tool_calls from the LLM response, execute them in batch, and append all tool result messages in batch instead of processing only the first call.",
+    "source": "AUTONOMOUS_REPORT.md (Phase 3: multi_tool_call batch processing)"
   },
   {
-    "pattern": "LLM doesn't read config.json before modifying main.py, hardcodes values instead (E40)",
-    "fix": "Ensure LLM reads dependency files (config.json) before modifying code that references them",
-    "source": "autonomous_report.md"
+    "pattern": "API requires tools parameter on every call but code omits it after first call",
+    "fix": "Pass the tools parameter on every LLM call iteration, not just the first one. Remove the tool role check that was preventing tool definitions from being sent.",
+    "source": "AUTONOMOUS_REPORT.md (Phase 3: tools not passed every time)"
   },
   {
-    "pattern": "LLM modifies test file incorrectly, resulting in test file not found or malformed test (E41)",
-    "fix": "Verify test file integrity after LLM modifications; ensure test discovery still works",
-    "source": "autonomous_report.md"
+    "pattern": "DEEPSEEK_API_KEY fallback missing when primary key is not set",
+    "fix": "Add fallback logic to check multiple environment variable names (e.g., DEEPSEEK_API_KEY, DEEPSEEK_API_KEY_ALT) or a config file for the API key.",
+    "source": "AUTONOMOUS_REPORT.md (Fixed issues: DEEPSEEK_API_KEY fallback missing)"
   },
   {
-    "pattern": "LLM refactoring magic numbers changes numeric precision, breaking assertions (E29)",
-    "fix": "Preserve numeric precision and literal values during refactoring; only extract truly duplicated constants",
-    "source": "autonomous_report.md"
+    "pattern": "will_continue flag from LLM response not handled, causing premature loop termination",
+    "fix": "Detect the will_continue flag in the LLM response and continue the loop iteration instead of ending, allowing multi-step tasks to complete.",
+    "source": "AUTONOMOUS_REPORT.md (Fixed issues: will_continue not handled)"
   },
   {
-    "pattern": "Windows subprocess/pipe handling incompatible with pipe processing tests (E23)",
-    "fix": "Handle Windows-specific subprocess and pipe incompatibilities in CLI tool execution",
-    "source": "autonomous_report.md"
-  },
-  {
-    "pattern": "Long system prompt + complex context causes DeepSeek to use text descriptions instead of structured tool_calls",
-    "fix": "Simplify SYSTEM_PROMPT and clarify task description format to favor tool_calls over text",
-    "source": "STATUS.md"
-  },
-  {
-    "pattern": "Cyclomatic complexity HIGH in helper methods (_remember_tool_result, _save_session_memory, _enforce_context_window)",
-    "fix": "Extract helper methods: _record_tool_memory, _build_memory_content, _calc_memory_importance, _record_failed_tools, _trim_old_messages, _trim_orphan_tool_results",
-    "source": "autonomous_report.md"
-  },
-  {
-    "pattern": "LLM appends to file instead of replacing content (E10 — expected NEW LINE but got existing content)",
-    "fix": "Ensure token budget is sufficient and LLM uses write mode instead of append when task requires full replacement",
-    "source": "autonomous_report.md"
+    "pattern": "sandbox_exec tool missing from TOOL_DEFINITIONS even though the tool exists",
+    "fix": "Add the sandbox_exec function definition to the TOOL_DEFINITIONS list so the LLM knows it can use this tool for executing quick code snippets.",
+    "source": "AUTONOMOUS_REPORT.md (Phase 4: Tool chain complete)"
   }
 ]
