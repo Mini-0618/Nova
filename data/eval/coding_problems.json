@@ -1,0 +1,102 @@
+[
+  {
+    "id": "P01",
+    "title": "LRU Cache",
+    "category": "data_structure",
+    "difficulty": "medium",
+    "task": "Implement an LRU cache with O(1) get and put operations. Capacity: 1~10000, key/value: 0~10^6.",
+    "verify_file": "data/eval/workspace/P01_lru_cache.py",
+    "verify_test": "python -c \"from data.eval.workspace.P01_lru_cache import LRUCache; c=LRUCache(2); c.put(1,1); c.put(2,2); assert c.get(1)==1; c.put(3,3); assert c.get(2)==-1; print('PASS')\"",
+    "expected_tools": ["Write", "Bash"]
+  },
+  {
+    "id": "P02",
+    "title": "Rate Limiter (Token Bucket)",
+    "category": "concurrency",
+    "difficulty": "medium",
+    "task": "Implement a thread-safe token bucket rate limiter. rate: 0.1~10000 tokens/sec, capacity: 1~100000. Must be thread-safe, millisecond precision, no third-party libs.",
+    "verify_file": "data/eval/workspace/P02_rate_limiter.py",
+    "verify_test": "python -c \"from data.eval.workspace.P02_rate_limiter import RateLimiter; import time; r=RateLimiter(10,3); assert r.allow(); assert r.allow(); assert r.allow(); assert not r.allow(); print('PASS')\"",
+    "expected_tools": ["Write", "Bash"]
+  },
+  {
+    "id": "P03",
+    "title": "Directory Tree Traverser",
+    "category": "filesystem",
+    "difficulty": "medium",
+    "task": "Implement a directory tree traverser that returns a nested dict structure. Support max_depth, glob pattern, handle permission errors and symlinks.",
+    "verify_file": "data/eval/workspace/P03_dir_tree.py",
+    "verify_test": "python -c \"from data.eval.workspace.P03_dir_tree import traverse; t=traverse('.', max_depth=1); assert 'name' in t; assert 'children' in t; print('PASS')\"",
+    "expected_tools": ["Write", "Bash"]
+  },
+  {
+    "id": "P04",
+    "title": "Task Scheduler with Priority",
+    "category": "concurrency",
+    "difficulty": "hard",
+    "task": "Implement a task scheduler with priority queue, delayed execution, cancellation, and timeout. Thread-safe. Tasks: {id, priority(1-10), delay_ms, callback}.",
+    "verify_file": "data/eval/workspace/P04_scheduler.py",
+    "verify_test": "python -c \"from data.eval.workspace.P04_scheduler import TaskScheduler; s=TaskScheduler(); s.add({'id':'a','priority':5,'delay_ms':0,'callback':lambda:None}); assert s.pending()==1; print('PASS')\"",
+    "expected_tools": ["Write", "Bash"]
+  },
+  {
+    "id": "P05",
+    "title": "INI Config Parser",
+    "category": "parser",
+    "difficulty": "medium",
+    "task": "Implement an INI file parser without configparser. Support [section], key=value, # comments, get/getint/getfloat/getbool methods. Handle duplicate keys, unquoted values.",
+    "verify_file": "data/eval/workspace/P05_ini_parser.py",
+    "verify_test": "python -c \"from data.eval.workspace.P05_ini_parser import INIParser; p=INIParser('[db]\\nhost=localhost\\nport=5432'); assert p.get('db','host')=='localhost'; assert p.getint('db','port')==5432; print('PASS')\"",
+    "expected_tools": ["Write", "Bash"]
+  },
+  {
+    "id": "P06",
+    "title": "Bloom Filter",
+    "category": "data_structure",
+    "difficulty": "medium",
+    "task": "Implement a Bloom filter. Auto-calculate optimal bit array size and hash count from expected_items and false_positive_rate. Use hashlib for multiple hash functions.",
+    "verify_file": "data/eval/workspace/P06_bloom_filter.py",
+    "verify_test": "python -c \"from data.eval.workspace.P06_bloom_filter import BloomFilter; b=BloomFilter(10000,0.01); b.add('hello'); assert b.contains('hello'); print('PASS')\"",
+    "expected_tools": ["Write", "Bash"]
+  },
+  {
+    "id": "P07",
+    "title": "Retry Decorator",
+    "category": "utility",
+    "difficulty": "medium",
+    "task": "Implement a retry decorator with exponential backoff, jitter, custom exceptions. Support both sync and async functions. max_retries: 1~10, base_delay: 0.01~60s.",
+    "verify_file": "data/eval/workspace/P07_retry.py",
+    "verify_test": "python -c \"from data.eval.workspace.P07_retry import retry; calls=[0]; @retry(max_retries=2, base_delay=0.01, exceptions=(ValueError,))\ndef f(): calls[0]+=1; raise ValueError('test'); f()\" 2>/dev/null; echo \"PASS\"",
+    "expected_tools": ["Write", "Bash"]
+  },
+  {
+    "id": "P08",
+    "title": "Ring Buffer",
+    "category": "data_structure",
+    "difficulty": "easy",
+    "task": "Implement a fixed-size ring buffer with O(1) put/get/peek. Thread-safe. Do not use collections.deque. Support is_full(), is_empty().",
+    "verify_file": "data/eval/workspace/P08_ring_buffer.py",
+    "verify_test": "python -c \"from data.eval.workspace.P08_ring_buffer import RingBuffer; r=RingBuffer(3); r.put(1); r.put(2); r.put(3); assert r.is_full(); r.put(4); assert r.get()==2; print('PASS')\"",
+    "expected_tools": ["Write", "Bash"]
+  },
+  {
+    "id": "P09",
+    "title": "Template Engine",
+    "category": "parser",
+    "difficulty": "hard",
+    "task": "Implement a template engine supporting {{variable}}, {{obj.key}}, {{list[0]}}, {{#if cond}}...{{/if}}. Undefined vars become empty string. Support escape with \\{\\{. No Jinja2.",
+    "verify_file": "data/eval/workspace/P09_template.py",
+    "verify_test": "python -c \"from data.eval.workspace.P09_template import render; assert render('Hello {{name}}', {'name':'World'})=='Hello World'; assert render('{{#if v}}yes{{/if}}', {'v':True})=='yes'; print('PASS')\"",
+    "expected_tools": ["Write", "Bash"]
+  },
+  {
+    "id": "P10",
+    "title": "Snowflake ID Generator",
+    "category": "system",
+    "difficulty": "medium",
+    "task": "Implement a Snowflake-style distributed ID generator. Structure: 1 sign + 41 timestamp + 5 datacenter + 5 worker + 12 sequence. worker_id: 0~1023, datacenter_id: 0~31. Raise on clock rollback.",
+    "verify_file": "data/eval/workspace/P10_snowflake.py",
+    "verify_test": "python -c \"from data.eval.workspace.P10_snowflake import SnowflakeGenerator; g=SnowflakeGenerator(1,1); a=g.next_id(); b=g.next_id(); assert a!=b; assert b>a; print('PASS')\"",
+    "expected_tools": ["Write", "Bash"]
+  }
+]
