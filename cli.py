@@ -419,6 +419,72 @@ def main():
     p.add_argument("--max-cycles", type=int, default=5, help="Max auto-loop cycles")
     p.set_defaults(func=cmd_plan)
 
+    # mcp
+    def cmd_mcp(args):
+        from mcp import create_server
+        server = create_server()
+
+        if args.mcp_action == "list":
+            tools = server.list_tools()
+            print(f"[codex-local] MCP Server: {server.get_tool_count()} tools, {server.get_module_count()} modules\n")
+            for t in tools:
+                params = t.get("parameters", {}).get("properties", {})
+                param_names = ", ".join(params.keys()) if params else "none"
+                print(f"  {t['name']:30s} | {t['description'][:50]}")
+            print(f"\nTotal: {len(tools)} tools")
+
+        elif args.mcp_action == "call":
+            tool_name = args.tool_name
+            tool_args = {}
+            if args.tool_args:
+                # Parse key=value pairs or JSON
+                raw = " ".join(args.tool_args)
+                if raw.startswith("{"):
+                    tool_args = json.loads(raw)
+                else:
+                    for kv in args.tool_args:
+                        if "=" in kv:
+                            k, v = kv.split("=", 1)
+                            # Try to parse as JSON value (int, bool, etc.)
+                            try:
+                                v = json.loads(v)
+                            except (json.JSONDecodeError, ValueError):
+                                pass
+                            tool_args[k] = v
+            result = server.call_tool(tool_name, tool_args)
+            print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+
+        elif args.mcp_action == "serve":
+            mode = args.mode or "stdio"
+            if mode == "http":
+                from mcp import HTTPServer
+                host = args.host or "127.0.0.1"
+                port = args.port or 8765
+                print(f"[codex-local] Starting MCP HTTP server on {host}:{port}...")
+                http_server = HTTPServer(server, host=host, port=port)
+                asyncio.run(http_server.run())
+            else:
+                print(f"[codex-local] Starting MCP STDIO server | {server.get_tool_count()} tools", file=sys.stderr)
+                from mcp import spawn_stdio_server
+                spawn_stdio_server(server)
+
+    p = sub.add_parser("mcp", help="MCP server operations")
+    mcp_sub = p.add_subparsers(dest="mcp_action")
+
+    p_list = mcp_sub.add_parser("list", help="List all registered MCP tools")
+    p_list.set_defaults(func=cmd_mcp)
+
+    p_call = mcp_sub.add_parser("call", help="Call an MCP tool")
+    p_call.add_argument("tool_name", help="Tool name to call")
+    p_call.add_argument("tool_args", nargs="*", help="Arguments as key=value or JSON")
+    p_call.set_defaults(func=cmd_mcp)
+
+    p_serve = mcp_sub.add_parser("serve", help="Start MCP server")
+    p_serve.add_argument("--mode", choices=["stdio", "http"], default="stdio", help="Server mode")
+    p_serve.add_argument("--host", default="127.0.0.1", help="HTTP host")
+    p_serve.add_argument("--port", type=int, default=8765, help="HTTP port")
+    p_serve.set_defaults(func=cmd_mcp)
+
     args = parser.parse_args()
 
     if not args.cmd:

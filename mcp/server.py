@@ -1,7 +1,6 @@
 """
-Codex-Local MCP Server Framework
-Supports both STDIO (for Claude Code integration) and HTTP modes.
-Each server implements a set of tools that Claude Code can call.
+Codex-Local MCP Unified Server
+Registers all tool modules and exposes them via STDIO/HTTP protocols.
 """
 
 import os
@@ -14,36 +13,113 @@ from typing import Optional, Dict, Any, List, Callable
 from abc import ABC, abstractmethod
 
 
-class MCPServer(ABC):
-    """
-    Base class for MCP servers.
-    Subclass and implement get_tools().
-    """
+# ─── Tool Module ABC ────────────────────────────────────────────────────────
 
-    def __init__(self, name: str, version: str = "1.0.0"):
-        self.name = name
-        self.version = version
-        self.tools = self.get_tools()
+class ToolModule(ABC):
+    """Base class for all MCP tool modules. Each module exposes tools via get_tools()."""
 
     @abstractmethod
     def get_tools(self) -> List[Dict]:
-        """Return list of tool definitions."""
+        """
+        Return list of tool definitions. Each dict must contain:
+          - name: str
+          - description: str
+          - parameters: dict (JSON Schema)
+          - handler: Callable(**kwargs) -> dict
+        """
         pass
 
-    @abstractmethod
-    def execute_tool(self, tool_name: str, arguments: Dict) -> Dict[str, Any]:
-        """Execute a tool by name with given arguments."""
-        pass
+
+# ─── Unified MCP Server ─────────────────────────────────────────────────────
+
+class CodexMCPServer:
+    """
+    Unified MCP Server that registers all tool modules.
+    Supports STDIO (for Claude Code) and HTTP modes.
+    """
+
+    def __init__(self):
+        self.name = "codex-local"
+        self.version = "2.0.0"
+        self.tools: Dict[str, Dict] = {}
+        self._modules: List[ToolModule] = []
+        self._auto_register()
+
+    def _auto_register(self):
+        """Register all built-in tool modules."""
+        from .filesystem_tools import FileSystemTools
+        from .browser_tools import BrowserTools
+        from .sandbox_tools import SandboxTools
+        from .git_tools import GitTools
+        from .search_tools import SearchTools
+        from .db_tools import DBTools
+        from .http_tools import HttpTools
+        from .process_tools import ProcessTools
+        from .system_tools import SystemTools
+
+        for module_cls in [
+            FileSystemTools,
+            GitTools,
+            SearchTools,
+            DBTools,
+            HttpTools,
+            ProcessTools,
+            SystemTools,
+            BrowserTools,
+            SandboxTools,
+        ]:
+            self.register_module(module_cls())
+
+    def register_module(self, module: ToolModule):
+        """Register a tool module, adding all its tools."""
+        self._modules.append(module)
+        for tool in module.get_tools():
+            name = tool["name"]
+            if name in self.tools:
+                print(f"[mcp] Warning: duplicate tool '{name}', overwriting", file=sys.stderr)
+            self.tools[name] = tool
+
+    def list_tools(self) -> List[Dict]:
+        """List all registered tools (name + description + parameters)."""
+        return [
+            {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t.get("parameters", {}),
+            }
+            for t in self.tools.values()
+        ]
+
+    def call_tool(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a tool by name with arguments. Returns result dict."""
+        if name not in self.tools:
+            return {"success": False, "error": f"Unknown tool: {name}"}
+        handler = self.tools[name]["handler"]
+        try:
+            result = handler(**args)
+            if not isinstance(result, dict):
+                result = {"result": result}
+            return result
+        except TypeError as e:
+            return {"success": False, "error": f"Invalid arguments for '{name}': {e}"}
+        except Exception as e:
+            return {"success": False, "error": f"Tool '{name}' failed: {e}"}
+
+    def get_tool_count(self) -> int:
+        return len(self.tools)
+
+    def get_module_count(self) -> int:
+        return len(self._modules)
 
     # ─── STDIO Protocol ─────────────────────────────────────────────────────
 
     async def run_stdio(self):
         """
         Run as STDIO MCP server (for Claude Code integration).
-        JSON-RPC-like protocol over stdin/stdout.
+        JSON-RPC 2.0 protocol over stdin/stdout.
         """
         while True:
-            line = await asyncio.get_event_loop().run_in_executor(sys.stdin, sys.stdin.readline)
+            line = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
             if not line:
                 break
 
@@ -62,22 +138,20 @@ class MCPServer(ABC):
                     await self._send_response(msg_id, result)
 
                 elif method == "tools/list":
-                    result = {"tools": self.tools}
-                    await self._send_response(msg_id, result)
+                    tools = self.list_tools()
+                    await self._send_response(msg_id, {"tools": tools})
 
                 elif method == "tools/call":
                     tool_name = params.get("name", "")
                     tool_args = params.get("arguments", {})
-                    try:
-                        exec_result = self.execute_tool(tool_name, tool_args)
-                        result = {
-                            "content": [{"type": "text", "text": json.dumps(exec_result, ensure_ascii=False)}],
-                        }
-                        await self._send_response(msg_id, result)
-                    except Exception as e:
-                        error = {"type": "text", "text": f"Error: {e}"}
-                        result = {"content": [error], "isError": True}
-                        await self._send_response(msg_id, result)
+                    exec_result = self.call_tool(tool_name, tool_args)
+                    is_error = not exec_result.get("success", True) if isinstance(exec_result, dict) else False
+                    result = {
+                        "content": [{"type": "text", "text": json.dumps(exec_result, ensure_ascii=False, default=str)}],
+                    }
+                    if is_error:
+                        result["isError"] = True
+                    await self._send_response(msg_id, result)
 
                 else:
                     await self._send_error(msg_id, -32601, f"Unknown method: {method}")
@@ -85,14 +159,14 @@ class MCPServer(ABC):
             except json.JSONDecodeError:
                 continue
             except Exception as e:
-                print(f"Server error: {e}", file=sys.stderr)
+                print(f"[mcp] Server error: {e}", file=sys.stderr)
                 await self._send_error(None, -32603, str(e))
 
     async def _send_response(self, msg_id, result):
         if msg_id is None:
             return
         resp = {"jsonrpc": "2.0", "id": msg_id, "result": result}
-        print(json.dumps(resp), flush=True)
+        print(json.dumps(resp, default=str), flush=True)
 
     async def _send_error(self, msg_id, code: int, message: str):
         if msg_id is None:
@@ -101,163 +175,81 @@ class MCPServer(ABC):
         print(json.dumps(resp), flush=True)
 
 
-# ─── Tool Decorator ─────────────────────────────────────────────────────────
-
-class ToolRegistry:
-    """Simple registry for MCP tools."""
-
-    def __init__(self):
-        self._tools: Dict[str, Callable] = {}
-
-    def register(self, name: str, description: str, parameters: Dict, func: Callable):
-        self._tools[name] = {
-            "name": name,
-            "description": description,
-            "parameters": parameters,
-            "func": func,
-        }
-
-    def list_tools(self) -> List[Dict]:
-        return [
-            {
-                "name": name,
-                "description": spec["description"],
-                "parameters": spec["parameters"],
-            }
-            for name, spec in self._tools.items()
-        ]
-
-    def call(self, name: str, arguments: Dict) -> Any:
-        if name not in self._tools:
-            raise ValueError(f"Unknown tool: {name}")
-        return self._tools[name]["func"](**arguments)
-
-
 # ─── HTTP MCP Server ─────────────────────────────────────────────────────────
 
 class HTTPServer:
     """
-    Lightweight HTTP server wrapping an MCP server.
-    Allows external programs to call tools via HTTP POST.
+    Lightweight HTTP server wrapping CodexMCPServer.
+    POST /tools/call, GET /tools/list, GET /tools/count.
     """
 
-    def __init__(self, mcp_server: MCPServer, host: str = "127.0.0.1", port: int = 8765):
-        self.mcp_server = mcp_server
+    def __init__(self, server: CodexMCPServer, host: str = "127.0.0.1", port: int = 8765):
+        self.server = server
         self.host = host
         self.port = port
-        self._running = False
-
-    async def handler(self, scope, receive, send):
-        """Handle HTTP requests."""
-        if scope["path"] == "/tools/list" and scope["method"] == "GET":
-            await self._json_response(send, 200, {"tools": self.mcp_server.tools})
-        elif scope["path"] == "/tools/call" and scope["method"] == "POST":
-            body = await self._read_body(receive, scope)
-            try:
-                params = json.loads(body) if body else {}
-                tool_name = params.get("name", "")
-                tool_args = params.get("arguments", {})
-                result = self.mcp_server.execute_tool(tool_name, tool_args)
-                await self._json_response(send, 200, result)
-            except Exception as e:
-                await self._json_response(send, 500, {"error": str(e)})
-        else:
-            await self._json_response(send, 404, {"error": "not found"})
-
-    async def _read_body(self, receive, scope) -> str:
-        body = b""
-        while True:
-            event = await receive()
-            if event["type"] == "http.request":
-                body += event.get("body", b"")
-                if not event.get("more_body"):
-                    break
-        return body.decode("utf-8", errors="replace")
-
-    async def _json_response(self, send, status: int, data: dict):
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        await send({
-            "type": "http.response.start",
-            "status": status,
-            "headers": [[b"content-type", b"application/json"]],
-        })
-        await send({
-            "type": "http.response.body",
-            "body": body,
-        })
 
     async def run(self):
-        import asyncio
-        import socket
-        server = await asyncio.start_server(self._handle, self.host, self.port)
-        self._running = True
+        srv = await asyncio.start_server(self._handle, self.host, self.port)
         print(f"[mcp] HTTP server running at http://{self.host}:{self.port}")
-        async with server:
-            await server.serve_forever()
+        async with srv:
+            await srv.serve_forever()
 
     async def _handle(self, reader, writer):
-        scope = {"path": "/", "method": "GET"}
-        raw = await reader.read(4096)
-        if raw:
-            lines = raw.decode("utf-8", errors="replace").split("\r\n")
-            if lines:
-                parts = lines[0].split(" ")
-                if len(parts) >= 2:
-                    scope["method"] = parts[0]
-                    scope["path"] = parts[1]
+        raw = await reader.read(8192)
+        if not raw:
+            writer.close()
+            return
 
-        class FakeReceive:
-            async def receive(self):
-                return {"type": "http.request", "body": b"", "more_body": False}
+        lines = raw.decode("utf-8", errors="replace").split("\r\n")
+        method, path = "GET", "/"
+        if lines:
+            parts = lines[0].split(" ")
+            if len(parts) >= 2:
+                method, path = parts[0], parts[1]
 
-        class FakeSend:
-            data = b""
-            async def __call__(self, msg):
-                if msg["type"] == "http.response.body":
-                    self.data += msg.get("body", b"")
+        # Extract body for POST
+        body_str = ""
+        if method == "POST":
+            sep = raw.find(b"\r\n\r\n")
+            if sep >= 0:
+                body_str = raw[sep + 4:].decode("utf-8", errors="replace")
 
-        send = FakeSend()
-        await self.handler(scope, FakeReceive(), send)
-        writer.write(send.data)
+        status, data = 404, {"error": "not found"}
+
+        if path == "/tools/list" and method == "GET":
+            status, data = 200, {"tools": self.server.list_tools()}
+        elif path == "/tools/count" and method == "GET":
+            status, data = 200, {"count": self.server.get_tool_count(), "modules": self.server.get_module_count()}
+        elif path == "/tools/call" and method == "POST":
+            try:
+                params = json.loads(body_str) if body_str else {}
+                tool_name = params.get("name", "")
+                tool_args = params.get("arguments", {})
+                result = self.server.call_tool(tool_name, tool_args)
+                status, data = 200, result
+            except Exception as e:
+                status, data = 500, {"error": str(e)}
+
+        resp_body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
+        header = f"HTTP/1.1 {status} OK\r\nContent-Type: application/json\r\nContent-Length: {len(resp_body)}\r\n\r\n"
+        writer.write(header.encode("utf-8") + resp_body)
         await writer.drain()
         writer.close()
 
 
 # ─── Spawn helpers ───────────────────────────────────────────────────────────
 
-def spawn_stdio_server(server: MCPServer):
-    """Run an MCP server using STDIO mode."""
+def spawn_stdio_server(server: CodexMCPServer):
+    """Run a CodexMCPServer using STDIO mode."""
     asyncio.run(server.run_stdio())
 
 
-def spawn_subprocess(command: List[str], mcp_server: MCPServer):
-    """Spawn a subprocess running an MCP server."""
-    proc = subprocess.Popen(
-        command,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    return proc
+def create_server() -> CodexMCPServer:
+    """Factory: create a fully-loaded CodexMCPServer."""
+    return CodexMCPServer()
 
 
 if __name__ == "__main__":
-    # Example: run a basic server
-    class HelloServer(MCPServer):
-        def get_tools(self):
-            return [{
-                "name": "hello",
-                "description": "Say hello",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"name": {"type": "string"}},
-                    "required": ["name"],
-                },
-            }]
-
-        def execute_tool(self, tool_name, arguments):
-            return {"message": f"Hello, {arguments.get('name', 'world')}!"}
-
-    server = HelloServer("hello")
-    print("Starting STDIO server...", file=sys.stderr)
-    asyncio.run(server.run_stdio())
+    server = create_server()
+    print(f"[mcp] Starting STDIO server | {server.get_tool_count()} tools, {server.get_module_count()} modules", file=sys.stderr)
+    spawn_stdio_server(server)
