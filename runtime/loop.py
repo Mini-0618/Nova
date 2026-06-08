@@ -581,6 +581,18 @@ class CodexLoop(_CodexLoopHelpers):
     async def run_task(self, task: str, session_id: Optional[str] = None,
                        timeout_sec: Optional[float] = None) -> str:
         """Run a task autonomously through the LLM loop."""
+        # Pre-flight check: validate API key is set before starting the loop
+        api_key = _resolve_api_key()
+        if not api_key:
+            self.error = (
+                "API key not found. Set one of the following environment variables: "
+                "CODEX_API_KEY, DEEPSEEK_API_KEY, OPENAI_API_KEY, or XIAOMIMIMO_API_KEY"
+            )
+            self.status = "error: missing API key"
+            self._running = False
+            _log.error(self.error)
+            return f"Loop ended: {self.status} | Error: {self.error}"
+
         self._running = True
         self.status = "running"
         self.current_task = task

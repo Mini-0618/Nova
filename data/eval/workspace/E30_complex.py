@@ -1,5 +1,4 @@
 def _validate_order(order):
-    """Validate order exists and has items."""
     if not order:
         return {'status': 'error', 'msg': 'no order'}
     if 'items' not in order:
@@ -10,7 +9,6 @@ def _validate_order(order):
 
 
 def _calculate_total(items):
-    """Calculate total price from items."""
     total = 0
     for item in items:
         if 'price' in item and 'qty' in item and item['qty'] > 0:
@@ -19,14 +17,12 @@ def _calculate_total(items):
 
 
 def _apply_discount(total, order):
-    """Apply discount if present."""
     if 'discount' in order:
         total *= (1 - order['discount'])
     return total
 
 
 def process_order(order):
-    """Process an order and return the result."""
     error = _validate_order(order)
     if error:
         return error

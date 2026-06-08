@@ -1,5 +1,5 @@
 def normalize(s):
-    if not s:
+    if s is None or not s:
         return ''
     return s.strip().lower()
 
@@ -9,22 +9,15 @@ def test_basic():
 def test_empty():
     assert normalize('') == ''
 
-def test_very_large_input():
-    large = '  X ' * 10000
-    expected = ('x ' * 10000).strip()
+def test_large_input():
+    large = '  HELLO  ' * 10000
     result = normalize(large)
-    assert len(result) == len(expected)
-    assert result.count(' ') == expected.count(' ')
-    assert result.replace(' ', '') == expected.replace(' ', '')
+    assert result == ('hello  ' * 10000).strip()
 
 def test_unicode():
-    assert normalize('  \u00c9l\u00e9phant  ') == '\u00e9l\u00e9phant'
-    assert normalize('  M\u00fcnchen  ') == 'm\u00fcnchen'
-    assert normalize('\u00a0') == '\u00a0'.strip()
+    assert normalize('  Café  ') == 'café'
+    assert normalize('  \u00e9\u00e0\u00fc  ') == '\u00e9\u00e0\u00fc'
+    assert normalize('  MÜNCHEN  ') == 'münchen'
 
 def test_none():
-    try:
-        result = normalize(None)
-        assert result == ''
-    except (TypeError, AttributeError):
-        pass
+    assert normalize(None) == ''

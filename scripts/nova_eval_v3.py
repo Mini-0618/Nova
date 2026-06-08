@@ -1,18 +1,18 @@
 """
-Nova Phase 1: Honest Full 50-Task Eval
-Run all tasks without skipping, save real results.
+Nova Phase 3 Final: Full 50-Task Eval with all fixes applied
 """
 
 import os, sys, asyncio, json, time
 os.environ['DEEPSEEK_API_KEY'] = 'sk-842a3aa4bbcb482a89482585aa227171'
 sys.path.insert(0, 'D:/codex-local')
 
+from pathlib import Path
 from dataclasses import asdict
 from data.eval.run_eval import load_tasks, run_task_with_loop, build_report
 
 async def main():
     tasks = load_tasks()
-    print(f"Starting honest eval of {len(tasks)} tasks...")
+    print(f"Starting final eval of {len(tasks)} tasks...")
     print(f"Model: deepseek-chat")
     print(f"Start time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     print()
@@ -32,12 +32,12 @@ async def main():
     report = build_report(results)
     rd = asdict(report)
 
-    report_path = 'D:/codex-local/data/eval/reports/eval-honest-v3.json'
+    report_path = Path('D:/codex-local/data/eval/reports/eval-final-v3.json')
     with open(report_path, 'w', encoding='utf-8') as f:
         json.dump(rd, f, indent=2, ensure_ascii=False)
 
     print(f'\n{"="*60}')
-    print(f'  HONEST EVAL RESULTS')
+    print(f'  FINAL EVAL RESULTS')
     print(f'{"="*60}')
     print(f'  Total: {rd["total_tasks"]}')
     print(f'  Passed: {rd["passed"]}')

@@ -14,6 +14,7 @@ class Counter:
     def reset(self):
         self.count = 0
 
+
 if __name__ == '__main__':
     c = Counter()
     c.reset()

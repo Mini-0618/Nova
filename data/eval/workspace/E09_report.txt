@@ -1,5 +1,3 @@
-Sales Summary Report
-====================
 Total rows: 5
-Sum of amount: 1145.00
+Sum of amount: 1145.0
 Row with highest amount: {'date': '2026-01-04', 'product': 'Widget C', 'amount': '500.00', 'quantity': '2'}

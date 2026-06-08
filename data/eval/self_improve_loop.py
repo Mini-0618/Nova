@@ -78,7 +78,58 @@ class SelfImproveLoop:
             "results": report.get("results", []),
         }
 
-    # ── Step 2: Collect Failures ───────────────────────────────────────
+    # ── Step 2: Run Tasks (re-run after applying fixes) ────────────────
+
+    def run_tasks(self, tasks: List[Dict]) -> Dict[str, Any]:
+        """Re-run eval tasks to get updated pass/fail results.
+
+        In dry-run mode, returns a stub result. In real mode, this would
+        invoke the eval runner to execute tasks and produce a new report.
+        """
+        if self.config.dry_run:
+            # Simulate that half the previously-failed tasks now pass
+            total = len(tasks)
+            passed = sum(1 for t in tasks if t.get("passed", False))
+            failed = total - passed
+            # Assume 50% of failures are fixed
+            fixed = failed // 2
+            passed += fixed
+            failed -= fixed
+            return {
+                "report_path": "dry-run",
+                "total": total,
+                "passed": passed,
+                "failed": failed,
+                "rate": round(passed / total * 100, 1) if total > 0 else 0,
+                "results": [],
+            }
+
+        # Real mode: run the eval subprocess
+        import subprocess
+        eval_script = Path(__file__).parent / "run_eval.py"
+        reports_dir = Path(__file__).parent / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        report_path = reports_dir / f"self_improve_cycle_{int(time.time())}.json"
+
+        try:
+            result = subprocess.run(
+                [sys.executable, str(eval_script), "--report", str(report_path)],
+                capture_output=True, text=True, timeout=120,
+                cwd=str(Path(__file__).parent.parent.parent),
+            )
+            if result.returncode != 0:
+                return {"error": f"Eval runner failed: {result.stderr[:500]}"}
+        except subprocess.TimeoutExpired:
+            return {"error": "Eval runner timed out"}
+        except Exception as e:
+            return {"error": f"Eval runner error: {e}"}
+
+        # Load the newly generated report
+        if report_path.exists():
+            return self.load_eval(str(report_path))
+        return {"error": "No report generated"}
+
+    # ── Step 3: Collect Failures ───────────────────────────────────────
 
     def collect_failures(self, eval_data: Dict) -> List[Dict]:
         """Extract failed tasks from eval data."""

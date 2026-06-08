@@ -1,13 +1,15 @@
-import json, os, tempfile
+import json, os, tempfile, shutil
 
 def save_users(users, path):
-    tmp = tempfile.NamedTemporaryFile('w', dir=os.path.dirname(path), delete=False)
+    tmp = tempfile.NamedTemporaryFile('w', delete=False, dir=os.path.dirname(path))
     try:
         json.dump(users, tmp)
         tmp.close()
-        os.replace(tmp.name, path)
+        shutil.move(tmp.name, path)
     except:
-        os.unlink(tmp.name)
+        tmp.close()
+        if os.path.exists(tmp.name):
+            os.unlink(tmp.name)
         raise
 
 if __name__ == '__main__':

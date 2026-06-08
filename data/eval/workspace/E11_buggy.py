@@ -1,6 +1,6 @@
 def sum_range(a, b):
     total = 0
-    for i in range(a, b):  # Sum from a to b-1
+    for i in range(a, b):
         total += i
     return total
 
