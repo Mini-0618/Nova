@@ -1,15 +1,20 @@
-#!/usr/bin/env python3
-"""E24: Subprocess with timeout."""
 import subprocess
 import sys
 
-try:
-    result = subprocess.run(
-        [sys.executable, '-c', 'import time; time.sleep(10)'],
-        timeout=2,
-        capture_output=True,
-        text=True,
-    )
-    print('COMPLETED')
-except subprocess.TimeoutExpired:
-    print('TIMEOUT')
+def run_with_timeout(command, timeout=2):
+    try:
+        proc = subprocess.Popen(command, shell=True)
+        proc.wait(timeout=timeout)
+        return proc.returncode
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        print('TIMEOUT')
+        return None
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        cmd = ' '.join(sys.argv[1:])
+    else:
+        cmd = 'python -c "import time; time.sleep(10)"'
+    run_with_timeout(cmd)
