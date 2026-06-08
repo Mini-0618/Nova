@@ -39,3 +39,4 @@ Thumbs.db
 *.swp
 evolution_lab/
 self_evolution_runs/
+tests/test_self_improve_loop.py
