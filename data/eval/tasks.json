@@ -233,7 +233,6 @@
     "verify_file": "data/eval/workspace/E23_filter.py",
     "verify_contains": "sys.stdin",
     "verify_test": "python -c \"import subprocess,sys; r=subprocess.run([sys.executable,'data/eval/workspace/E23_filter.py'],input='INFO ok\\nERROR bad\\nINFO fine',capture_output=True,text=True); assert 'ERROR' in r.stdout, f'Expected ERROR in output: {r.stdout}'; print('PASS')\"",
-    "verify_output_contains": "ERROR",
     "expected_tools": ["file_read", "file_write", "bash"]
   },
   {

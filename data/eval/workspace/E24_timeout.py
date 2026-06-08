@@ -1,16 +1,23 @@
 import subprocess
 import sys
 
-def run_with_timeout(cmd, timeout=2):
+def run_with_timeout(command, timeout=2):
     """Run a command with a timeout. Print 'TIMEOUT' if it exceeds."""
     try:
-        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
-        print(proc.stdout, end='')
-        if proc.stderr:
-            print(proc.stderr, end='', file=sys.stderr)
-        return proc.returncode
-    except subprocess.TimeoutExpired:
-        print('TIMEOUT')
+        proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+            print(stdout, end='')
+            if stderr:
+                print(stderr, end='', file=sys.stderr)
+            return proc.returncode
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            print('TIMEOUT')
+            return -1
+    except Exception as e:
+        print(f'Error: {e}')
         return -1
 
 if __name__ == '__main__':

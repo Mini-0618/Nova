@@ -43,4 +43,13 @@ line3
 [32/50] E32: Write integration test... PASS (27.4s)
 [33/50] E33: Add edge case tests... FAIL (31.3s)
   -> test failed (exit 1): .....F                                                                   [100%
-[34/50] E34: Write parametrized tests... 
+[34/50] E34: Write parametrized tests... PASS (29.2s)
+[35/50] E35: Test error handling... PASS (24.1s)
+[36/50] E36: Fix cross-file import error... PASS (26.4s)
+[37/50] E37: Add missing dependency... PASS (29.6s)
+[38/50] E38: Refactor across files... PASS (26.8s)
+[39/50] E39: Fix circular dependency... PASS (31.9s)
+[40/50] E40: Add config file support... FAIL (32.2s)
+  -> test failed (exit 1): Traceback (most recent call last):
+  File "D:\codex-local\data\eval\workspace\
+[41/50] E41: Fix tool calling format... 

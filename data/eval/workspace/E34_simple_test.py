@@ -7,25 +7,25 @@ def classify_age(age):
     if age < 65: return 'adult'
     return 'senior'
 
-
 @pytest.mark.parametrize("age,expected", [
-    (0, 'child'),       # edge: newborn
-    (1, 'child'),       # edge: infant
-    (12, 'child'),      # edge: just below teen boundary
-    (13, 'teen'),       # edge: exactly teen boundary
-    (17, 'teen'),       # edge: just below adult boundary
-    (18, 'adult'),      # edge: exactly adult boundary
-    (64, 'adult'),      # edge: just below senior boundary
-    (65, 'senior'),     # edge: exactly senior boundary
-    (100, 'senior'),    # edge: old age
+    (5, 'child'),          # child age
+    (0, 'child'),          # edge: age 0 (youngest child)
+    (12, 'child'),         # edge: max child
+    (13, 'teen'),          # edge: min teen
+    (15, 'teen'),          # teen age
+    (17, 'teen'),          # edge: max teen
+    (18, 'adult'),         # edge: min adult
+    (30, 'adult'),         # adult age
+    (64, 'adult'),         # edge: max adult
+    (65, 'senior'),        # edge: min senior
+    (100, 'senior'),       # senior age
 ])
 def test_classify_age(age, expected):
     assert classify_age(age) == expected
 
-
 @pytest.mark.parametrize("invalid_age", [
-    -1,     # edge: just below zero
-    -100,   # edge: very negative
+    -1,                    # edge: negative
+    -100,                  # negative value
 ])
 def test_classify_age_invalid(invalid_age):
     with pytest.raises(ValueError):

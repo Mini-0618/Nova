@@ -527,6 +527,7 @@ class CodexLoop(_CodexLoopHelpers):
         self.error: Optional[str] = None
         self._consecutive_failures = 0
         self._fallback_index = 0
+        self._fallback_tried: set = set()
         self._model_switch_history: List[Dict[str, str]] = []
 
     async def switch_model(self, model_name: str, provider: str = "") -> Dict[str, Any]:
