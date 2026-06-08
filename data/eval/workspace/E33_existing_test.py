@@ -9,16 +9,15 @@ def test_basic():
 def test_empty():
     assert normalize('') == ''
 
-def test_none():
-    assert normalize(None) == ''
+def test_very_large_input():
+    large = '  HELLO ' * 10000
+    expected = ('hello ' * 10000).strip()
+    assert normalize(large) == expected
 
 def test_unicode():
     assert normalize('  Café  ') == 'café'
-    assert normalize('  über  ') == 'über'
-    assert normalize('  ñoño  ') == 'ñoño'
+    assert normalize('  \u00c9l\u00e9phant  ') == 'éléphant'
+    assert normalize('  \u4e2d\u56fd  ') == '\u4e2d\u56fd'
 
-def test_large_input():
-    large = '  ' + 'a' * 100000 + '  '
-    result = normalize(large)
-    assert result == 'a' * 100000
-    assert len(result) == 100000
+def test_none():
+    assert normalize(None) == ''

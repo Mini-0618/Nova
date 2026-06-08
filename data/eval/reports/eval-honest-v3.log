@@ -7,4 +7,40 @@ Start time: 2026-06-09 06:04:13
 [3/50] E03: Copy with modification... PASS (11.7s)
 [4/50] E04: List and filter files... PASS (6.9s)
 [5/50] E05: Merge multiple files... PASS (15.1s)
-[6/50] E06: Create directory structure... 
+[6/50] E06: Create directory structure... PASS (15.7s)
+[7/50] E07: JSON processing... PASS (16.8s)
+[8/50] E08: Search and replace across files... FAIL (11.0s)
+  -> expected 'FIXED' in data/eval/workspace/E08_target.txt, got: line1
+ERROR here
+line3
+[9/50] E09: Generate a formatted report... FAIL (32.3s)
+  -> file not found: data/eval/workspace/E09_report.txt
+[10/50] E10: Append to existing file... PASS (12.2s)
+[11/50] E11: Fix off-by-one error... PASS (30.1s)
+[12/50] E12: Fix string comparison... PASS (15.8s)
+[13/50] E13: Fix division by zero... PASS (15.0s)
+[14/50] E14: Fix dict key error... PASS (22.3s)
+[15/50] E15: Fix infinite loop... PASS (17.1s)
+[16/50] E16: Fix mutable default argument... PASS (27.4s)
+[17/50] E17: Fix encoding issue... PASS (28.4s)
+[18/50] E18: Fix race condition in counter... PASS (26.5s)
+[19/50] E19: Fix incorrect sorting... PASS (28.5s)
+[20/50] E20: Fix silent data loss... PASS (30.2s)
+[21/50] E21: Run a CLI command and capture output... PASS (14.3s)
+[22/50] E22: Build a simple argument parser... PASS (22.2s)
+[23/50] E23: Pipe processing... FAIL (29.2s)
+  -> test failed (exit 1): Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    
+[24/50] E24: Subprocess with timeout... PASS (29.2s)
+[25/50] E25: Check exit code... PASS (23.6s)
+[26/50] E26: Extract function... PASS (32.1s)
+[27/50] E27: Add type hints... PASS (24.1s)
+[28/50] E28: Convert to class... PASS (28.6s)
+[29/50] E29: Replace magic numbers... PASS (40.5s)
+[30/50] E30: Reduce complexity... PASS (28.2s)
+[31/50] E31: Write tests for existing code... PASS (30.2s)
+[32/50] E32: Write integration test... PASS (27.4s)
+[33/50] E33: Add edge case tests... FAIL (31.3s)
+  -> test failed (exit 1): .....F                                                                   [100%
+[34/50] E34: Write parametrized tests... 

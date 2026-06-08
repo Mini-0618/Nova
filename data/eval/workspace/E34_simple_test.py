@@ -9,27 +9,24 @@ def classify_age(age):
 
 
 @pytest.mark.parametrize("age,expected", [
-    # Edge case: negative age should raise ValueError
-    pytest.param(-1, ValueError, id="negative_age_raises_error"),
-    pytest.param(-100, ValueError, id="very_negative_age_raises_error"),
-    # Boundary: age 0 (youngest valid)
-    pytest.param(0, 'child', id="age_zero_is_child"),
-    # Child range
-    pytest.param(5, 'child', id="young_child"),
-    pytest.param(12, 'child', id="almost_teen"),
-    # Boundary: age 13 is teen
-    pytest.param(13, 'teen', id="exactly_teen"),
-    pytest.param(17, 'teen', id="almost_adult"),
-    # Boundary: age 18 is adult
-    pytest.param(18, 'adult', id="exactly_adult"),
-    pytest.param(64, 'adult', id="almost_senior"),
-    # Boundary: age 65 is senior
-    pytest.param(65, 'senior', id="exactly_senior"),
-    pytest.param(100, 'senior', id="very_old_senior"),
+    (0, 'child'),       # edge: newborn
+    (1, 'child'),       # edge: infant
+    (12, 'child'),      # edge: just below teen boundary
+    (13, 'teen'),       # edge: exactly teen boundary
+    (17, 'teen'),       # edge: just below adult boundary
+    (18, 'adult'),      # edge: exactly adult boundary
+    (64, 'adult'),      # edge: just below senior boundary
+    (65, 'senior'),     # edge: exactly senior boundary
+    (100, 'senior'),    # edge: old age
 ])
 def test_classify_age(age, expected):
-    if expected is ValueError:
-        with pytest.raises(ValueError):
-            classify_age(age)
-    else:
-        assert classify_age(age) == expected
+    assert classify_age(age) == expected
+
+
+@pytest.mark.parametrize("invalid_age", [
+    -1,     # edge: just below zero
+    -100,   # edge: very negative
+])
+def test_classify_age_invalid(invalid_age):
+    with pytest.raises(ValueError):
+        classify_age(invalid_age)

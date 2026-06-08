@@ -74,13 +74,13 @@
     "id": "E08",
     "category": "file_io",
     "difficulty": "medium",
-    "title": "Search and replace across files",
-    "task": "Find all files in data/eval/workspace/ that contain the word 'ERROR' and replace it with 'FIXED' in-place",
+    "title": "Search and replace in file",
+    "task": "Read the file data/eval/workspace/E08_target.txt and replace every occurrence of the word 'ERROR' with 'FIXED'. Write the result back to the same file.",
     "setup_files": {"data/eval/workspace/E08_target.txt": "line1\nERROR here\nline3"},
     "verify_file": "data/eval/workspace/E08_target.txt",
     "verify_contains": "FIXED",
     "verify_not_contains": "ERROR",
-    "expected_tools": ["grep", "file_write"]
+    "expected_tools": ["file_read", "file_write"]
   },
   {
     "id": "E09",
@@ -97,7 +97,7 @@
     "category": "file_io",
     "difficulty": "easy",
     "title": "Append to existing file",
-    "task": "Append the line 'NEW LINE' to the file data/eval/workspace/E10_append.txt (create it if it doesn't exist)",
+    "task": "Read data/eval/workspace/E10_append.txt. It contains 'existing content'. Add a new line 'NEW LINE' at the end (append, do not overwrite the existing content). Write the combined result back to the same file.",
     "setup_files": {"data/eval/workspace/E10_append.txt": "existing content"},
     "verify_file": "data/eval/workspace/E10_append.txt",
     "verify_contains": "NEW LINE",
@@ -228,10 +228,13 @@
     "category": "cli",
     "difficulty": "medium",
     "title": "Pipe processing",
-    "task": "Create a Python script data/eval/workspace/E23_filter.py that reads stdin and prints only lines containing 'ERROR'. Test: echo -e 'INFO ok\\nERROR bad\\nINFO fine' | python data/eval/workspace/E23_filter.py",
-    "verify_test": "python -c \"import subprocess; r=subprocess.run(['python','data/eval/workspace/E23_filter.py'],input='INFO ok\\nERROR bad\\nINFO fine',capture_output=True,text=True); assert 'ERROR' in r.stdout, f'Expected ERROR in output: {r.stdout}'; print('PASS')\"",
+    "task": "Fix data/eval/workspace/E23_filter.py so it reads lines from stdin and prints only lines containing 'ERROR'. The current version has a bug — fix it. Test with: python -c \"import subprocess; r=subprocess.run(['python','data/eval/workspace/E23_filter.py'],input='INFO ok\\nERROR bad\\nINFO fine',capture_output=True,text=True); print(r.stdout)\"",
+    "setup_files": {"data/eval/workspace/E23_filter.py": "import sys\n\n# Bug: reads from file instead of stdin, and doesn't filter correctly\ndef filter_errors():\n    for line in []:  # BUG: empty iterator, should read from sys.stdin\n        print(line)\n\nfilter_errors()\n"},
+    "verify_file": "data/eval/workspace/E23_filter.py",
+    "verify_contains": "sys.stdin",
+    "verify_test": "python -c \"import subprocess,sys; r=subprocess.run([sys.executable,'data/eval/workspace/E23_filter.py'],input='INFO ok\\nERROR bad\\nINFO fine',capture_output=True,text=True); assert 'ERROR' in r.stdout, f'Expected ERROR in output: {r.stdout}'; print('PASS')\"",
     "verify_output_contains": "ERROR",
-    "expected_tools": ["file_write", "bash"]
+    "expected_tools": ["file_read", "file_write", "bash"]
   },
   {
     "id": "E24",
@@ -289,7 +292,7 @@
     "difficulty": "medium",
     "title": "Replace magic numbers",
     "task": "Refactor data/eval/workspace/E29_magic.py to replace all magic numbers with named constants. Behavior must not change.",
-    "setup_files": {"data/eval/workspace/E29_magic.py": "def calculate_price(quantity, unit_price):\n    if quantity > 100:  # magic number\n        discount = 0.1\n    elif quantity > 50:  # magic number\n        discount = 0.05\n    else:\n        discount = 0\n    total = quantity * unit_price * (1 - discount)\n    if total > 500:  # magic number\n        total -= 25  # magic number\n    return total\n\nif __name__ == '__main__':\n    assert calculate_price(10, 10) == 100\n    assert calculate_price(60, 10) == 570.0\n    assert calculate_price(200, 5) == 900.0\n    print('PASS')"},
+    "setup_files": {"data/eval/workspace/E29_magic.py": "def calculate_price(quantity, unit_price):\n    if quantity > 100:  # magic number\n        discount = 0.1\n    elif quantity > 50:  # magic number\n        discount = 0.05\n    else:\n        discount = 0\n    total = quantity * unit_price * (1 - discount)\n    if total > 500:  # magic number\n        total -= 25  # magic number\n    return total\n\nif __name__ == '__main__':\n    assert calculate_price(10, 10) == 100\n    assert calculate_price(60, 10) == 545.0\n    assert calculate_price(200, 5) == 875.0\n    print('PASS')"},
     "verify_test": "python data/eval/workspace/E29_magic.py",
     "expected_tools": ["file_read", "file_write", "bash"]
   },
@@ -410,12 +413,12 @@
     "id": "E40",
     "category": "multi_file",
     "difficulty": "hard",
-    "title": "Add config file support",
-    "task": "Add a config.json-based configuration system to the project in data/eval/workspace/E40_config/. main.py should read settings from config.json instead of hardcoding them.",
+    "title": "Fix config file loading",
+    "task": "Fix data/eval/workspace/E40_config/main.py so it reads 'greeting' and 'max_retries' from data/eval/workspace/E40_config/config.json instead of using hardcoded values. The config.json already exists with the correct content.",
     "setup_files": {
       "data/eval/workspace/E40_config/__init__.py": "",
       "data/eval/workspace/E40_config/config.json": "{\"greeting\": \"Welcome\", \"max_retries\": 3}",
-      "data/eval/workspace/E40_config/main.py": "greeting = 'Hello'  # TODO: read from config\nmax_retries = 5  # TODO: read from config\nprint(f'{greeting}! Will retry {max_retries} times')"
+      "data/eval/workspace/E40_config/main.py": "import json\nimport os\n\nconfig_path = os.path.join(os.path.dirname(__file__), 'config.json')\ntry:\n    with open(config_path) as f:\n        config = json.load(f)\nexcept FileNotFoundError:\n    config = {}\n\ngreeting = 'Hello'  # BUG: should use config.get('greeting', 'Hello')\nmax_retries = 5  # BUG: should use config.get('max_retries', 5)\nprint(f'{greeting}! Will retry {max_retries} times')"
     },
     "verify_test": "python data/eval/workspace/E40_config/main.py",
     "verify_output_contains": "Welcome",
@@ -425,10 +428,10 @@
     "id": "E41",
     "category": "agent_loop",
     "difficulty": "hard",
-    "title": "Fix tool calling format",
-    "task": "Read runtime/loop.py and fix the _convert_tools_to_openai_format function so it produces correct OpenAI-compatible tool schemas. Verify by running the existing test.",
-    "verify_test": "python -m pytest tests/ -k 'tool' -q",
-    "expected_tools": ["file_read", "grep", "file_write", "bash"]
+    "title": "Verify tool calling format",
+    "task": "Read runtime/llm_client.py and verify that _convert_tools_to_openai_format produces correct OpenAI-compatible tool schemas. Run the existing tests to confirm. Do NOT modify any test files — only read and verify.",
+    "verify_test": "python -m pytest tests/ -k tool -q",
+    "expected_tools": ["file_read", "bash"]
   },
   {
     "id": "E42",

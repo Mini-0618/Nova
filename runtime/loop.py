@@ -32,7 +32,8 @@ from runtime.decision_engine import (  # noqa: E402
 )
 from runtime.message_manager import (  # noqa: E402
     _build_messages, _estimate_tokens, _msg_char_len,
-    MAX_MESSAGES_CHARS, _TOOL_USE_REMINDER,
+    MAX_MESSAGES_CHARS, _TOOL_USE_REMINDER, _trim_old_rounds,
+    TRIM_THRESHOLD,
 )
 from runtime.llm_client import (  # noqa: E402
     _call_llm_async, _parse_sse_stream, _convert_chat_to_response_format,
@@ -251,34 +252,25 @@ class _CodexLoopHelpers:
         return msg
 
     def _enforce_context_window(self, messages: List[Dict]) -> List[Dict]:
-        """Truncate oldest messages when context window is exceeded."""
+        """Smart context window enforcement.
+
+        Triggers at 80% threshold. Preserves system prompt + recent 5 rounds.
+        Summarizes old tool results, drops oldest rounds if still over limit.
+        """
         if len(messages) <= 2:
             return messages
         max_chars = self.config.max_context_tokens * 4 if self.config.max_context_tokens > 0 else MAX_MESSAGES_CHARS
         total_chars = sum(_msg_char_len(m) for m in messages)
-        if total_chars <= max_chars:
+
+        # Only trim when above threshold (80% of limit)
+        threshold = int(max_chars * TRIM_THRESHOLD)
+        if total_chars <= threshold:
             return messages
+
         system_msg, recent = messages[0], messages[1:]
-        recent, total_chars = self._trim_old_messages(system_msg, recent, max_chars)
-        recent = self._trim_orphan_tool_results(system_msg, recent)
+        # Use smart trimming from message_manager
+        recent = _trim_old_rounds(system_msg, recent, max_chars)
         return [system_msg] + recent
-
-    def _trim_old_messages(self, system_msg: Dict, recent: list, max_chars: int) -> tuple:
-        """Remove oldest messages until within char limit. Returns (recent, total_chars)."""
-        total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in recent)
-        while recent and total_chars > max_chars:
-            removed = recent.pop(0)
-            if removed.get("role") == "assistant" and removed.get("tool_calls"):
-                if recent and recent[0].get("role") == "tool":
-                    recent.pop(0)
-            total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in recent)
-        return recent, total_chars
-
-    def _trim_orphan_tool_results(self, system_msg: Dict, recent: list) -> list:
-        """Remove orphan tool results at the start of message list."""
-        while recent and recent[0].get("role") == "tool":
-            recent.pop(0)
-        return recent
 
     def _find_call_id(self, action: Action, output_items: List[Dict]) -> Optional[str]:
         """Find the call_id for a tool call from output items."""

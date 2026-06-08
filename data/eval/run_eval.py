@@ -193,18 +193,14 @@ def setup_workspace(task: Dict[str, Any]):
 
 
 def cleanup_workspace(task: Dict[str, Any]):
-    """Remove task-specific files before running to prevent contamination."""
-    task_id = task["id"]
-    # Remove files that this task is expected to create
+    """Remove task-specific output files before running.
+    Only removes the verify_file to ensure clean verification."""
     verify_file = task.get("verify_file")
     if verify_file:
         full_path = PROJECT_ROOT / verify_file
-        if full_path.exists():
-            full_path.unlink()
-    # Remove setup files (they'll be recreated by setup_workspace)
-    for rel_path in task.get("setup_files", {}):
-        full_path = PROJECT_ROOT / rel_path
-        if full_path.exists():
+        # Only remove if it's a file (not a directory) and not a setup file
+        setup_files = set(task.get("setup_files", {}).keys())
+        if verify_file not in setup_files and full_path.exists() and full_path.is_file():
             full_path.unlink()
 
 

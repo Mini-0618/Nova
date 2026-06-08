@@ -4,6 +4,9 @@ import os
 import tempfile
 import json
 
+# Make sure runtime is on the path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 # Use a temp DB to avoid polluting the real one
 os.environ["CODEX_DATA"] = tempfile.mkdtemp()
 

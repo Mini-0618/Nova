@@ -1,25 +1,23 @@
-# Named constants
-QUANTITY_DISCOUNT_TIER1 = 100
-QUANTITY_DISCOUNT_TIER2 = 50
-DISCOUNT_TIER1 = 0.1
-DISCOUNT_TIER2 = 0.05
-DISCOUNT_NONE = 0
-FLAT_DISCOUNT_THRESHOLD = 500
-FLAT_DISCOUNT_AMOUNT = 25
+BULK_QUANTITY_THRESHOLD = 100
+MEDIUM_QUANTITY_THRESHOLD = 50
+BULK_DISCOUNT_RATE = 0.1
+MEDIUM_DISCOUNT_RATE = 0.05
+NO_DISCOUNT = 0
+TOTAL_DISCOUNT_THRESHOLD = 500
+EXTRA_DISCOUNT_AMOUNT = 25
 
 
 def calculate_price(quantity, unit_price):
-    if quantity > QUANTITY_DISCOUNT_TIER1:
-        discount = DISCOUNT_TIER1
-    elif quantity > QUANTITY_DISCOUNT_TIER2:
-        discount = DISCOUNT_TIER2
+    if quantity > BULK_QUANTITY_THRESHOLD:
+        discount = BULK_DISCOUNT_RATE
+    elif quantity > MEDIUM_QUANTITY_THRESHOLD:
+        discount = MEDIUM_DISCOUNT_RATE
     else:
-        discount = DISCOUNT_NONE
+        discount = NO_DISCOUNT
     total = quantity * unit_price * (1 - discount)
-    if total > FLAT_DISCOUNT_THRESHOLD:
-        total -= FLAT_DISCOUNT_AMOUNT
+    if total > TOTAL_DISCOUNT_THRESHOLD:
+        total -= EXTRA_DISCOUNT_AMOUNT
     return total
-
 
 if __name__ == '__main__':
     assert calculate_price(10, 10) == 100
