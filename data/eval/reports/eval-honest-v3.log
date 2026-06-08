@@ -59,4 +59,12 @@ line3
   -> test failed (exit 2): 
 =================================== ERRORS ==================================
 [43/50] E43: Add API key validation... PASS (32.9s)
-[44/50] E44: Remove module-level side effects... 
+[44/50] E44: Remove module-level side effects... FAIL (36.9s)
+  -> test failed (exit 2): 
+=================================== ERRORS ==================================
+[45/50] E45: Fix session truncation strategy... FAIL (43.7s)
+  -> test failed (exit 2): 
+=================================== ERRORS ==================================
+[46/50] E46: Create a benchmark runner... FAIL (35.2s)
+  -> file not found: data/eval/run_eval.py
+[47/50] E47: Create a failure analyzer... 

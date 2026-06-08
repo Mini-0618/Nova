@@ -3,6 +3,8 @@ import sys
 import os
 import tempfile
 import json
+import shutil
+from pathlib import Path
 
 # Make sure runtime is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -16,7 +18,6 @@ def test_append_message_selective_truncation():
     """Verify that only the oversized message is truncated, others remain intact."""
     # Use a unique temp DB
     tmp_dir = tempfile.mkdtemp()
-    from pathlib import Path
     db_path = Path(tmp_dir) / "test_sessions.db"
     
     mgr = SessionManager(db_path=db_path)
@@ -72,14 +73,12 @@ def test_append_message_selective_truncation():
         
     finally:
         mgr.close()
-        import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def test_update_session_selective_truncation():
     """Verify that update_session also only truncates oversized messages."""
     tmp_dir = tempfile.mkdtemp()
-    from pathlib import Path
     db_path = Path(tmp_dir) / "test_sessions.db"
     
     mgr = SessionManager(db_path=db_path)
@@ -119,7 +118,6 @@ def test_update_session_selective_truncation():
         
     finally:
         mgr.close()
-        import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
