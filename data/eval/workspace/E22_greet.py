@@ -1,7 +1,10 @@
-#!/usr/bin/env python3
-"""E22: Simple argument parser."""
 import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument('--name', default='World')
-args = parser.parse_args()
-print(f'Hello, {args.name}')
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--name', required=True, help='Name to greet')
+    args = parser.parse_args()
+    print(f'Hello, {args.name}')
+
+if __name__ == '__main__':
+    main()

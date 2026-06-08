@@ -1,3 +1,3 @@
-from helpers import helper  # BUG: wrong module name
+from utils import helper
 
 print(helper())

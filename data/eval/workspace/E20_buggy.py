@@ -1,10 +1,15 @@
-import json, os
+import json, os, tempfile
 
 def save_users(users, path):
-    tmp = path + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(users, f)
-    os.replace(tmp, path)  # atomic on most OSes
+    # Atomic write: write to temp file first, then rename
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path) or '.')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(users, f)
+        os.replace(tmp_path, path)
+    except:
+        os.unlink(tmp_path)
+        raise
 
 if __name__ == '__main__':
     users = [{'name': 'alice'}, {'name': 'bob'}]

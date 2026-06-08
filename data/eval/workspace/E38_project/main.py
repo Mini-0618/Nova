@@ -1,9 +1,3 @@
-import sys
-import os
-
-# Add the project directory to the path so imports work
-sys.path.insert(0, os.path.dirname(__file__))
-
 from models import User
 from repository import UserRepo
 
