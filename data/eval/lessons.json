@@ -1,0 +1,62 @@
+[
+  {
+    "pattern": "ToolExecutor defaults workspace to D:/ (drive root) instead of project directory, causing LLM to operate on wrong files",
+    "fix": "Set ToolExecutor default workspace to project directory",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "File reads >20K chars overflow the context window, causing token limit errors",
+    "fix": "Truncate file read results exceeding 20K characters before sending to LLM",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "Token budget of 50K max_total_tokens too low for multi-step tasks, causing premature termination",
+    "fix": "Increase max_total_tokens default from 50K to 100K (eval) or 200K",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "Untrimmed messages cause context overflow (1.8M tokens to 1M limit model) when tool results accumulate across iterations",
+    "fix": "Enforce context window BEFORE the LLM call in _run_iteration(), not just after",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "Workspace pollution from previous tasks — LLM finds leftover files and misses the actual target file (E08)",
+    "fix": "Clean workspace between eval tasks to prevent stale file interference",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "LLM doesn't read config.json before modifying main.py, hardcodes values instead (E40)",
+    "fix": "Ensure LLM reads dependency files (config.json) before modifying code that references them",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "LLM modifies test file incorrectly, resulting in test file not found or malformed test (E41)",
+    "fix": "Verify test file integrity after LLM modifications; ensure test discovery still works",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "LLM refactoring magic numbers changes numeric precision, breaking assertions (E29)",
+    "fix": "Preserve numeric precision and literal values during refactoring; only extract truly duplicated constants",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "Windows subprocess/pipe handling incompatible with pipe processing tests (E23)",
+    "fix": "Handle Windows-specific subprocess and pipe incompatibilities in CLI tool execution",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "Long system prompt + complex context causes DeepSeek to use text descriptions instead of structured tool_calls",
+    "fix": "Simplify SYSTEM_PROMPT and clarify task description format to favor tool_calls over text",
+    "source": "STATUS.md"
+  },
+  {
+    "pattern": "Cyclomatic complexity HIGH in helper methods (_remember_tool_result, _save_session_memory, _enforce_context_window)",
+    "fix": "Extract helper methods: _record_tool_memory, _build_memory_content, _calc_memory_importance, _record_failed_tools, _trim_old_messages, _trim_orphan_tool_results",
+    "source": "autonomous_report.md"
+  },
+  {
+    "pattern": "LLM appends to file instead of replacing content (E10 — expected NEW LINE but got existing content)",
+    "fix": "Ensure token budget is sufficient and LLM uses write mode instead of append when task requires full replacement",
+    "source": "autonomous_report.md"
+  }
+]

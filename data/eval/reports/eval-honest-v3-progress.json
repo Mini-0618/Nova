@@ -1,0 +1,91 @@
+{
+  "results": [
+    {
+      "task_id": "E01",
+      "category": "file_io",
+      "difficulty": "easy",
+      "title": "Create a file with content",
+      "passed": true,
+      "score": 1,
+      "error": null,
+      "duration_s": 5.98,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "details": "all checks passed",
+      "quality_score": 0.0,
+      "quality_issues": 0
+    },
+    {
+      "task_id": "E02",
+      "category": "file_io",
+      "difficulty": "easy",
+      "title": "Read and count lines",
+      "passed": true,
+      "score": 1,
+      "error": null,
+      "duration_s": 7.37,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "details": "all checks passed",
+      "quality_score": 0.0,
+      "quality_issues": 0
+    },
+    {
+      "task_id": "E03",
+      "category": "file_io",
+      "difficulty": "easy",
+      "title": "Copy with modification",
+      "passed": true,
+      "score": 1,
+      "error": null,
+      "duration_s": 7.99,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "details": "all checks passed",
+      "quality_score": 90.0,
+      "quality_issues": 5
+    },
+    {
+      "task_id": "E04",
+      "category": "file_io",
+      "difficulty": "medium",
+      "title": "List and filter files",
+      "passed": true,
+      "score": 1,
+      "error": null,
+      "duration_s": 12.88,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "details": "all checks passed",
+      "quality_score": 0.0,
+      "quality_issues": 0
+    },
+    {
+      "task_id": "E05",
+      "category": "file_io",
+      "difficulty": "medium",
+      "title": "Merge multiple files",
+      "passed": true,
+      "score": 1,
+      "error": null,
+      "duration_s": 7.69,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "details": "all checks passed",
+      "quality_score": 0.0,
+      "quality_issues": 0
+    }
+  ],
+  "completed_ids": [
+    "E04",
+    "E02",
+    "E01",
+    "E03",
+    "E05"
+  ]
+}

@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import time
+import importlib.util
 from pathlib import Path
 from dataclasses import asdict
 
@@ -16,7 +17,16 @@ sys.path.insert(0, str(ROOT))
 
 os.environ['DEEPSEEK_API_KEY'] = 'sk-842a3aa4bbcb482a89482585aa227171'
 
-from data.eval.run_eval import load_tasks, run_task_with_loop, build_report, TaskResult
+# Direct import using spec (avoids package path issues)
+_eval_path = str(ROOT / "data" / "eval" / "run_eval.py").replace("\\", "/")
+_spec = importlib.util.spec_from_file_location("run_eval", _eval_path)
+_run_eval = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_run_eval)
+
+load_tasks = _run_eval.load_tasks
+run_task_with_loop = _run_eval.run_task_with_loop
+build_report = _run_eval.build_report
+TaskResult = _run_eval.TaskResult
 
 PROGRESS_FILE = ROOT / "data" / "eval" / "reports" / "eval-honest-v3-progress.json"
 REPORT_FILE = ROOT / "data" / "eval" / "reports" / "eval-honest-v3.json"

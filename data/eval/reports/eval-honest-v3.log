@@ -67,4 +67,82 @@ line3
 =================================== ERRORS ==================================
 [46/50] E46: Create a benchmark runner... FAIL (35.2s)
   -> file not found: data/eval/run_eval.py
-[47/50] E47: Create a failure analyzer... 
+[47/50] E47: Create a failure analyzer... FAIL (35.5s)
+  -> file not found: data/eval/analyze_failures.py
+[48/50] E48: Build a lessons.json seed... PASS (39.2s)
+[49/50] E49: Create a patch reviewer prompt... PASS (26.0s)
+[50/50] E50: Design the self-improvement loop... FAIL (33.8s)
+  -> file not found: data/eval/self_improve_loop.py
+
+============================================================
+  HONEST EVAL RESULTS
+============================================================
+  Total: 50
+  Passed: 38
+  Failed: 12
+  Pass Rate: 76.0%
+
+  By Category:
+    agent_loop      1/5 (20.0%)
+    bugfix          10/10 (100.0%)
+    cli             4/5 (80.0%)
+    file_io         8/10 (80.0%)
+    multi_file      4/5 (80.0%)
+    refactor        5/5 (100.0%)
+    self_improve    2/5 (40.0%)
+    test_writing    4/5 (80.0%)
+
+  By Difficulty:
+    easy            9/9 (100.0%)
+    hard            15/24 (62.5%)
+    medium          14/17 (82.4%)
+
+  Failed Tasks (12):
+    [E08] Search and replace across files
+      Category: file_io | Difficulty: medium
+      Details: expected 'FIXED' in data/eval/workspace/E08_target.txt, got: line1
+ERROR here
+line3
+    [E09] Generate a formatted report
+      Category: file_io | Difficulty: hard
+      Details: file not found: data/eval/workspace/E09_report.txt
+    [E23] Pipe processing
+      Category: cli | Difficulty: medium
+      Details: test failed (exit 1): Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    
+    [E33] Add edge case tests
+      Category: test_writing | Difficulty: medium
+      Details: test failed (exit 1): .....F                                                                   [100%
+    [E40] Add config file support
+      Category: multi_file | Difficulty: hard
+      Details: test failed (exit 1): Traceback (most recent call last):
+  File "D:\codex-local\data\eval\workspace\
+    [E41] Fix tool calling format
+      Category: agent_loop | Difficulty: hard
+      Details: test failed (exit 4): 
+=================================== ERRORS ==================================
+    [E42] Fix message trimming
+      Category: agent_loop | Difficulty: hard
+      Details: test failed (exit 2): 
+=================================== ERRORS ==================================
+    [E44] Remove module-level side effects
+      Category: agent_loop | Difficulty: hard
+      Details: test failed (exit 2): 
+=================================== ERRORS ==================================
+    [E45] Fix session truncation strategy
+      Category: agent_loop | Difficulty: hard
+      Details: test failed (exit 2): 
+=================================== ERRORS ==================================
+    [E46] Create a benchmark runner
+      Category: self_improve | Difficulty: hard
+      Details: file not found: data/eval/run_eval.py
+    [E47] Create a failure analyzer
+      Category: self_improve | Difficulty: hard
+      Details: file not found: data/eval/analyze_failures.py
+    [E50] Design the self-improvement loop
+      Category: self_improve | Difficulty: hard
+      Details: file not found: data/eval/self_improve_loop.py
+
+  Report saved to: D:/codex-local/data/eval/reports/eval-honest-v3.json
+  End time: 2026-06-09 06:25:48
