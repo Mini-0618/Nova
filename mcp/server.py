@@ -249,6 +249,10 @@ def create_server() -> CodexMCPServer:
     return CodexMCPServer()
 
 
+# Backward compatibility aliases
+MCPServer = CodexMCPServer
+
+
 if __name__ == "__main__":
     server = create_server()
     print(f"[mcp] Starting STDIO server | {server.get_tool_count()} tools, {server.get_module_count()} modules", file=sys.stderr)
