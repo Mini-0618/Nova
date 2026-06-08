@@ -259,16 +259,26 @@ class _CodexLoopHelpers:
         if total_chars <= max_chars:
             return messages
         system_msg, recent = messages[0], messages[1:]
+        recent, total_chars = self._trim_old_messages(system_msg, recent, max_chars)
+        recent = self._trim_orphan_tool_results(system_msg, recent)
+        return [system_msg] + recent
+
+    def _trim_old_messages(self, system_msg: Dict, recent: list, max_chars: int) -> tuple:
+        """Remove oldest messages until within char limit. Returns (recent, total_chars)."""
+        total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in recent)
         while recent and total_chars > max_chars:
             removed = recent.pop(0)
             if removed.get("role") == "assistant" and removed.get("tool_calls"):
                 if recent and recent[0].get("role") == "tool":
                     recent.pop(0)
             total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in recent)
+        return recent, total_chars
+
+    def _trim_orphan_tool_results(self, system_msg: Dict, recent: list) -> list:
+        """Remove orphan tool results at the start of message list."""
         while recent and recent[0].get("role") == "tool":
             recent.pop(0)
-            total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in recent)
-        return [system_msg] + recent
+        return recent
 
     def _find_call_id(self, action: Action, output_items: List[Dict]) -> Optional[str]:
         """Find the call_id for a tool call from output items."""
@@ -304,19 +314,27 @@ class _CodexLoopHelpers:
         if not self.memory_mgr or not self.config.auto_remember:
             return
         try:
-            success = result.get("success") if isinstance(result, dict) else False
-            if not success and isinstance(result, dict):
-                error_msg = result.get("error", "")
-                if error_msg:
-                    self.memory_mgr.store(f"Tool error ({action.tool_name}): {error_msg}",
-                                           importance=0.7, tags=["error", action.tool_name], source="tool_execution")
-            elif success and action.tool_name in ("write_file", "edit_file", "create_directory"):
-                fp = action.tool_args.get("path", "") if action.tool_args else ""
-                if fp:
-                    self.memory_mgr.store(f"Modified file: {fp}", importance=0.5,
-                                           tags=["file", "modified", action.tool_name], source="tool_execution")
+            self._record_tool_memory(action, result)
         except Exception:
             _log.warning("Failed to store tool execution in memory", exc_info=True)
+
+    def _record_tool_memory(self, action: Action, result: Any) -> None:
+        """Record tool result details to memory (extracted for clarity)."""
+        if not isinstance(result, dict):
+            return
+        success = result.get("success", False)
+        if not success:
+            error_msg = result.get("error", "")
+            if error_msg:
+                self.memory_mgr.store(f"Tool error ({action.tool_name}): {error_msg}",
+                                       importance=0.7, tags=["error", action.tool_name], source="tool_execution")
+            return
+        file_tools = ("write_file", "edit_file", "create_directory")
+        if action.tool_name in file_tools:
+            fp = (action.tool_args or {}).get("path", "")
+            if fp:
+                self.memory_mgr.store(f"Modified file: {fp}", importance=0.5,
+                                       tags=["file", "modified", action.tool_name], source="tool_execution")
 
     async def _execute_pending_calls(self, state: _RunState) -> None:
         """Execute remaining pending tool calls from same LLM response."""
@@ -444,19 +462,35 @@ class _CodexLoopHelpers:
         tools_used = [d["tool"] for d in self._key_decisions]
         tool_summary = ", ".join(tools_used) if tools_used else "none"
         failed_tools = [d["tool"] for d in self._key_decisions if not d.get("success")]
-        memory_content = (f"Task: {task[:200]}\nResult: {'success' if success else 'failure'}\n"
-                           f"Iterations: {self._iteration}, Duration: {duration_sec}s\nTools used: {tool_summary}")
-        if self.error:
-            memory_content += f"\nError: {self.error[:200]}"
-        importance = 0.7 if self.error else (0.6 if self._iteration > 10 else 0.5)
+        memory_content = self._build_memory_content(task, success, duration_sec, tool_summary)
+        importance = self._calc_memory_importance()
         self.memory_mgr.remember(memory_content, importance=importance,
                                   tags=["session", "outcome", "success" if success else "failure"],
                                   title=f"Task: {task[:50]}")
-        if failed_tools:
-            self.memory_mgr.learn(f"Tools that failed during task '{task[:100]}': {', '.join(failed_tools)}",
-                                   tags=["tool_failure", "learning"],
-                                   title=f"Tool failures: {', '.join(failed_tools)}", importance=0.6)
+        self._record_failed_tools(task, failed_tools)
         self.memory_mgr.end_session(promote_important=True)
+
+    def _build_memory_content(self, task: str, success: bool, duration_sec: int, tool_summary: str) -> str:
+        """Build memory content string from session data."""
+        content = (f"Task: {task[:200]}\nResult: {'success' if success else 'failure'}\n"
+                   f"Iterations: {self._iteration}, Duration: {duration_sec}s\nTools used: {tool_summary}")
+        if self.error:
+            content += f"\nError: {self.error[:200]}"
+        return content
+
+    def _calc_memory_importance(self) -> float:
+        """Calculate memory importance based on session outcome."""
+        if self.error:
+            return 0.7
+        return 0.6 if self._iteration > 10 else 0.5
+
+    def _record_failed_tools(self, task: str, failed_tools: list) -> None:
+        """Record failed tools to memory for learning."""
+        if not failed_tools:
+            return
+        self.memory_mgr.learn(f"Tools that failed during task '{task[:100]}': {', '.join(failed_tools)}",
+                               tags=["tool_failure", "learning"],
+                               title=f"Tool failures: {', '.join(failed_tools)}", importance=0.6)
 
     def _finalize_run(self, task: str, data_collector: Any) -> None:
         """Finalize run: save data, update session, save memory."""

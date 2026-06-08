@@ -1,1 +1,2 @@
-existing contentNEW LINE
+existing content
+NEW LINE
