@@ -312,7 +312,7 @@ async def run_task_with_loop(task: Dict[str, Any], model: str = "deepseek-chat")
         if "deepseek" in model:
             provider = "deepseek"
         elif "qwen" in model or "mimo" in model:
-            provider = "openai"  # Use OPENAI_BASE_URL
+            provider = ""  # Let env var OPENAI_BASE_URL determine the endpoint
 
         config = LoopConfig(
             model=model,
