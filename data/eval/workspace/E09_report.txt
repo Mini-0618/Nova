@@ -1,11 +1,6 @@
 Sales Summary Report
 ====================
-
 Total rows: 5
 Sum of 'amount': 1145.00
-
 Row with highest amount:
-  date: 2026-01-04
-  product: Widget C
-  amount: 500.00
-  quantity: 2
+  Date: 2026-01-04, Product: Widget C, Amount: 500.00, Quantity: 2

@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-06-09 05:53:29",
+  "total_tasks": 1,
+  "passed": 1,
+  "failed": 0,
+  "pass_rate": 100.0,
+  "by_category": {
+    "multi_file": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "pass_rate": 100.0
+    }
+  },
+  "by_difficulty": {
+    "hard": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "pass_rate": 100.0
+    }
+  },
+  "tool_call_accuracy": 0,
+  "regression_rate": 0.0,
+  "false_change_rate": 0.0,
+  "human_intervention_rate": 0.0,
+  "avg_quality_score": 88.5,
+  "total_quality_issues": 9,
+  "results": [
+    {
+      "task_id": "E40",
+      "category": "multi_file",
+      "difficulty": "hard",
+      "title": "Add config file support",
+      "passed": true,
+      "score": 1,
+      "error": null,
+      "duration_s": 33.69,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "needed_human": false,
+      "introduced_regression": false,
+      "changed_wrong_files": false,
+      "patch_too_large": false,
+      "details": "all checks passed",
+      "quality_score": 88.5,
+      "quality_issues": 9
+    }
+  ]
+}

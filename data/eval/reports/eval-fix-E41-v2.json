@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-06-09 05:54:22",
+  "total_tasks": 1,
+  "passed": 0,
+  "failed": 1,
+  "pass_rate": 0.0,
+  "by_category": {
+    "agent_loop": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "pass_rate": 0.0
+    }
+  },
+  "by_difficulty": {
+    "hard": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "pass_rate": 0.0
+    }
+  },
+  "tool_call_accuracy": 0,
+  "regression_rate": 0.0,
+  "false_change_rate": 0.0,
+  "human_intervention_rate": 0.0,
+  "avg_quality_score": 0.0,
+  "total_quality_issues": 0,
+  "results": [
+    {
+      "task_id": "E41",
+      "category": "agent_loop",
+      "difficulty": "hard",
+      "title": "Fix tool calling format",
+      "passed": false,
+      "score": 0,
+      "error": null,
+      "duration_s": 39.87,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "needed_human": false,
+      "introduced_regression": false,
+      "changed_wrong_files": false,
+      "patch_too_large": false,
+      "details": "test failed (exit 4): \nno tests ran in 0.12s\nERROR: Wrong expression passed to '-k': 'tool': at column 1: expected not OR left parenthesis OR identifier; got string literal\n\n",
+      "quality_score": 0.0,
+      "quality_issues": 0
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import sys
 
 for line in sys.stdin:
-    if 'FIXED' in line:
+    if 'ERROR' in line:
         print(line, end='')

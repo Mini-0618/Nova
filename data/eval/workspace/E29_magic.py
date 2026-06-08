@@ -1,23 +1,23 @@
-# Named constants for magic numbers
-QUANTITY_THRESHOLD_HIGH = 100
-QUANTITY_THRESHOLD_MEDIUM = 50
-DISCOUNT_HIGH = 0.1
-DISCOUNT_MEDIUM = 0.05
+# Named constants
+QUANTITY_DISCOUNT_TIER1 = 100
+QUANTITY_DISCOUNT_TIER2 = 50
+DISCOUNT_TIER1 = 0.1
+DISCOUNT_TIER2 = 0.05
 DISCOUNT_NONE = 0
-TOTAL_THRESHOLD_ADDITIONAL_DISCOUNT = 500
-ADDITIONAL_DISCOUNT_AMOUNT = 25
+FLAT_DISCOUNT_THRESHOLD = 500
+FLAT_DISCOUNT_AMOUNT = 25
 
 
 def calculate_price(quantity, unit_price):
-    if quantity > QUANTITY_THRESHOLD_HIGH:
-        discount = DISCOUNT_HIGH
-    elif quantity > QUANTITY_THRESHOLD_MEDIUM:
-        discount = DISCOUNT_MEDIUM
+    if quantity > QUANTITY_DISCOUNT_TIER1:
+        discount = DISCOUNT_TIER1
+    elif quantity > QUANTITY_DISCOUNT_TIER2:
+        discount = DISCOUNT_TIER2
     else:
         discount = DISCOUNT_NONE
     total = quantity * unit_price * (1 - discount)
-    if total > TOTAL_THRESHOLD_ADDITIONAL_DISCOUNT:
-        total -= ADDITIONAL_DISCOUNT_AMOUNT
+    if total > FLAT_DISCOUNT_THRESHOLD:
+        total -= FLAT_DISCOUNT_AMOUNT
     return total
 
 

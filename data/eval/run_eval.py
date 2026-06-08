@@ -193,9 +193,19 @@ def setup_workspace(task: Dict[str, Any]):
 
 
 def cleanup_workspace(task: Dict[str, Any]):
-    """Remove setup files after task (optional, for clean state)."""
-    # Don't cleanup - keep files for debugging
-    pass
+    """Remove task-specific files before running to prevent contamination."""
+    task_id = task["id"]
+    # Remove files that this task is expected to create
+    verify_file = task.get("verify_file")
+    if verify_file:
+        full_path = PROJECT_ROOT / verify_file
+        if full_path.exists():
+            full_path.unlink()
+    # Remove setup files (they'll be recreated by setup_workspace)
+    for rel_path in task.get("setup_files", {}):
+        full_path = PROJECT_ROOT / rel_path
+        if full_path.exists():
+            full_path.unlink()
 
 
 def verify_file_check(task: Dict[str, Any]) -> tuple[bool, str]:
@@ -301,7 +311,8 @@ async def run_task_with_loop(task: Dict[str, Any], model: str = "deepseek-chat")
     loop_result = None
 
     try:
-        # Setup
+        # Setup - clean first to prevent contamination from previous tasks
+        cleanup_workspace(task)
         setup_workspace(task)
 
         # Run through CodexLoop
