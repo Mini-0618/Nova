@@ -1,39 +1,19 @@
-class Counter:
-    def __init__(self):
-        self.count = 0
-
-    def increment(self):
-        self.count += 1
-
-    def decrement(self):
-        self.count -= 1
-
-    def get_count(self):
-        return self.count
-
-    def reset(self):
-        self.count = 0
-
-
-# Module-level instance for backward compatibility with the standalone function API
-_counter = Counter()
-
+count = 0
 
 def increment():
-    _counter.increment()
-
+    global count
+    count += 1
 
 def decrement():
-    _counter.decrement()
-
+    global count
+    count -= 1
 
 def get_count():
-    return _counter.get_count()
-
+    return count
 
 def reset():
-    _counter.reset()
-
+    global count
+    count = 0
 
 if __name__ == '__main__':
     reset()

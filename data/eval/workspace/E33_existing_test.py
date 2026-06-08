@@ -1,4 +1,6 @@
 def normalize(s):
+    if s is None:
+        return ''
     if not s:
         return ''
     return s.strip().lower()
@@ -9,28 +11,17 @@ def test_basic():
 def test_empty():
     assert normalize('') == ''
 
-# Edge case tests
-
-def test_none_input():
-    """None should return empty string (falsy check)."""
+def test_none():
     assert normalize(None) == ''
 
-def test_large_input():
-    """Very large input should be handled correctly."""
-    large_string = '  ' + 'A' * 1_000_000 + '  '
-    result = normalize(large_string)
-    assert result == 'a' * 1_000_000
+def test_very_large_input():
+    large = '  X' * 10000 + '  '
+    result = normalize(large)
+    expected = ('x' * 10000).lower()
+    assert result == expected, f"Expected length {len(expected)}, got length {len(result)}"
 
-def test_unicode_input():
-    """Unicode characters should be lowercased correctly."""
-    assert normalize('  Héllo Wörld  ') == 'héllo wörld'
-    assert normalize('  日本語テスト  ') == '日本語テスト'
-    assert normalize('  Ñoño  ') == 'ñoño'
-    assert normalize('  Ελληνικά  ') == 'ελληνικά'
-    assert normalize('  한국어  ') == '한국어'
-
-def test_whitespace_only():
-    """Strings with only whitespace should return empty string."""
-    assert normalize('   ') == ''
-    assert normalize('\t\n\r') == ''
-    assert normalize('  \t  \n  \r  ') == ''
+def test_unicode():
+    assert normalize('  Café  ') == 'café'
+    assert normalize('  MÜNCHEN  ') == 'münchen'
+    assert normalize('  日本語  ') == '日本語'
+    assert normalize('  \u00c9\u00e9  ') == 'éé'
