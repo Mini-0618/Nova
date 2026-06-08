@@ -1,6 +1,6 @@
 def sum_range(a, b):
     total = 0
-    for i in range(a, b):  # FIXED: changed b+1 to b so range stops before b
+    for i in range(a, b+1):  # BUG: should be range(a, b)
         total += i
     return total
 
