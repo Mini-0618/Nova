@@ -1,14 +1,14 @@
 import json, os, tempfile
 
 def save_users(users, path):
-    tmp = tempfile.NamedTemporaryFile('w', dir=os.path.dirname(path) or '.', delete=False)
+    # Write to temp file first, then rename atomically to prevent partial writes
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path) or '.')
     try:
-        json.dump(users, tmp)
-        tmp.close()
-        os.replace(tmp.name, path)
+        with os.fdopen(fd, 'w') as f:
+            json.dump(users, f)
+        os.replace(tmp_path, path)
     except:
-        os.unlink(tmp.name)
-        tmp.close()
+        os.unlink(tmp_path)
         raise
 
 if __name__ == '__main__':

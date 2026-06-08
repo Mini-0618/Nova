@@ -1337,7 +1337,8 @@ TOOL_DEFINITIONS = [
 
 class ToolExecutor:
     def __init__(self, workspace_root: Optional[str] = None):
-        self.workspace_root = Path(workspace_root or os.environ.get("CODEX_WORKSPACE", "D:/"))
+        default_workspace = str(Path(__file__).parent.parent)  # Project root
+        self.workspace_root = Path(workspace_root or os.environ.get("CODEX_WORKSPACE", default_workspace))
         self.sandbox = get_sandbox()
 
     def _resolve_path(self, path: str) -> Path:

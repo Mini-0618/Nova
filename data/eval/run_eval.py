@@ -318,6 +318,8 @@ async def run_task_with_loop(task: Dict[str, Any], model: str = "deepseek-chat")
             model=model,
             provider=provider,
             max_iterations=15,
+            max_total_tokens=200000,  # Increased from 50000 to allow full task completion
+            max_context_tokens=8000,
         )
 
         loop = CodexLoop(config)

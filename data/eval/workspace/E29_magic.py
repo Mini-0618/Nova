@@ -1,24 +1,22 @@
-BULK_DISCOUNT_THRESHOLD = 100
-BULK_DISCOUNT_RATE = 0.1
-MEDIUM_DISCOUNT_THRESHOLD = 50
-MEDIUM_DISCOUNT_RATE = 0.05
-NO_DISCOUNT = 0
-EXTRA_DISCOUNT_THRESHOLD = 500
-EXTRA_DISCOUNT_AMOUNT = 25
+LARGE_BULK_THRESHOLD = 100
+LARGE_BULK_DISCOUNT = 0.1
+MEDIUM_BULK_THRESHOLD = 50
+MEDIUM_BULK_DISCOUNT = 0.05
+FREE_SHIPPING_THRESHOLD = 500
+SHIPPING_DEDUCTION = 25
 
 
 def calculate_price(quantity, unit_price):
-    if quantity > BULK_DISCOUNT_THRESHOLD:
-        discount = BULK_DISCOUNT_RATE
-    elif quantity > MEDIUM_DISCOUNT_THRESHOLD:
-        discount = MEDIUM_DISCOUNT_RATE
+    if quantity > LARGE_BULK_THRESHOLD:
+        discount = LARGE_BULK_DISCOUNT
+    elif quantity > MEDIUM_BULK_THRESHOLD:
+        discount = MEDIUM_BULK_DISCOUNT
     else:
-        discount = NO_DISCOUNT
+        discount = 0
     total = quantity * unit_price * (1 - discount)
-    if total > EXTRA_DISCOUNT_THRESHOLD:
-        total -= EXTRA_DISCOUNT_AMOUNT
+    if total > FREE_SHIPPING_THRESHOLD:
+        total -= SHIPPING_DEDUCTION
     return total
-
 
 if __name__ == '__main__':
     assert calculate_price(10, 10) == 100

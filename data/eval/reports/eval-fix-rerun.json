@@ -1,0 +1,86 @@
+[
+  {
+    "task_id": "E01",
+    "passed": true,
+    "details": "all checks passed",
+    "duration": 44.00952935218811
+  },
+  {
+    "task_id": "E08",
+    "passed": false,
+    "details": "expected 'FIXED' in data/eval/workspace/E08_target.txt, got: line1\nERROR here\nline3",
+    "duration": 15.635698318481445
+  },
+  {
+    "task_id": "E10",
+    "passed": false,
+    "details": "expected 'NEW LINE' in data/eval/workspace/E10_append.txt, got: existing content",
+    "duration": 7.315661668777466
+  },
+  {
+    "task_id": "E20",
+    "passed": true,
+    "details": "all checks passed",
+    "duration": 44.05606818199158
+  },
+  {
+    "task_id": "E22",
+    "passed": false,
+    "details": "test failed (exit 2): C:\\Python314\\python.exe: can't open file 'D:\\\\codex-local\\\\data\\\\eval\\\\workspace\\\\E22_greet.py': [Errno 2] No such file or directory\n",
+    "duration": 28.744242191314697
+  },
+  {
+    "task_id": "E23",
+    "passed": false,
+    "details": "test failed (exit 1): Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import subprocess; r=subprocess.run(['python','data/eval/workspace/E23_filter.py'],input='INFO ok\\nERROR bad\\nINFO fine',capture_output=True,text=True); assert 'ERROR' in r.stdout, f'Expected ERROR in output: {r.stdout}'; print('PASS')\n                                                                                                                                                                    ^^^^^^^^^^^^^^^^^^^\nAs",
+    "duration": 27.710907697677612
+  },
+  {
+    "task_id": "E24",
+    "passed": false,
+    "details": "file not found: data/eval/workspace/E24_timeout.py",
+    "duration": 31.327468633651733
+  },
+  {
+    "task_id": "E25",
+    "passed": false,
+    "details": "file not found: data/eval/workspace/E25_exitcode.txt",
+    "duration": 28.732330799102783
+  },
+  {
+    "task_id": "E29",
+    "passed": false,
+    "details": "test failed (exit 1): Traceback (most recent call last):\n  File \"D:\\codex-local\\data\\eval\\workspace\\E29_magic.py\", line 23, in <module>\n    assert calculate_price(60, 10) == 570.0\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+    "duration": 52.194096326828
+  },
+  {
+    "task_id": "E35",
+    "passed": false,
+    "details": "test failed (exit 4): \nno tests ran in 0.00s\nERROR: file or directory not found: data/eval/workspace/E35_errors_test.py\n\n",
+    "duration": 35.27889561653137
+  },
+  {
+    "task_id": "E36",
+    "passed": false,
+    "details": "test failed (exit 1): Traceback (most recent call last):\n  File \"D:\\codex-local\\data\\eval\\workspace\\E36_project\\main.py\", line 1, in <module>\n    from helpers import helper  # BUG: wrong module name\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^\nModuleNotFoundError: No module named 'helpers'\n",
+    "duration": 44.4391975402832
+  },
+  {
+    "task_id": "E39",
+    "passed": false,
+    "details": "test failed (exit 1): Traceback (most recent call last):\n  File \"D:\\codex-local\\data\\eval\\workspace\\E39_circ\\main.py\", line 1, in <module>\n    from a import get_a_value\n  File \"D:\\codex-local\\data\\eval\\workspace\\E39_circ\\a.py\", line 1, in <module>\n    from b import get_b_value\n  File \"D:\\codex-local\\data\\eval\\workspace\\E39_circ\\b.py\", line 1, in <module>\n    from a import get_a_value\nImportError: cannot import name 'get_a_value' from 'a' (consider renaming 'D:\\\\codex-local\\\\data\\\\eval\\\\workspace\\\\E39_circ\\\\a.py' if i",
+    "duration": 32.61754083633423
+  },
+  {
+    "task_id": "E40",
+    "passed": false,
+    "details": "expected 'Welcome' in output, got: Hello! Will retry 5 times\n",
+    "duration": 29.11278223991394
+  },
+  {
+    "task_id": "E41",
+    "passed": false,
+    "details": "test failed (exit 4): \nno tests ran in 0.12s\nERROR: Wrong expression passed to '-k': 'tool': at column 1: expected not OR left parenthesis OR identifier; got string literal\n\n",
+    "duration": 61.16754746437073
+  }
+]
