@@ -1,0 +1,266 @@
+[
+  {
+    "task_id": "E01",
+    "title": "Create a file with content",
+    "passed": false,
+    "duration": 24.05
+  },
+  {
+    "task_id": "E02",
+    "title": "Read and count lines",
+    "passed": true,
+    "duration": 19.7
+  },
+  {
+    "task_id": "E03",
+    "title": "Copy with modification",
+    "passed": true,
+    "duration": 18.13
+  },
+  {
+    "task_id": "E04",
+    "title": "List and filter files",
+    "passed": true,
+    "duration": 10.67
+  },
+  {
+    "task_id": "E05",
+    "title": "Merge multiple files",
+    "passed": true,
+    "duration": 28.4
+  },
+  {
+    "task_id": "E06",
+    "title": "Create directory structure",
+    "passed": true,
+    "duration": 14.89
+  },
+  {
+    "task_id": "E07",
+    "title": "JSON processing",
+    "passed": true,
+    "duration": 20.82
+  },
+  {
+    "task_id": "E08",
+    "title": "Search and replace across files",
+    "passed": false,
+    "duration": 11.76
+  },
+  {
+    "task_id": "E09",
+    "title": "Generate a formatted report",
+    "passed": true,
+    "duration": 25.49
+  },
+  {
+    "task_id": "E10",
+    "title": "Append to existing file",
+    "passed": false,
+    "duration": 11.57
+  },
+  {
+    "task_id": "E11",
+    "title": "Fix off-by-one error",
+    "passed": true,
+    "duration": 23.01
+  },
+  {
+    "task_id": "E12",
+    "title": "Fix string comparison",
+    "passed": true,
+    "duration": 19.97
+  },
+  {
+    "task_id": "E13",
+    "title": "Fix division by zero",
+    "passed": true,
+    "duration": 20.96
+  },
+  {
+    "task_id": "E14",
+    "title": "Fix dict key error",
+    "passed": true,
+    "duration": 19.4
+  },
+  {
+    "task_id": "E15",
+    "title": "Fix infinite loop",
+    "passed": true,
+    "duration": 19.17
+  },
+  {
+    "task_id": "E16",
+    "title": "Fix mutable default argument",
+    "passed": true,
+    "duration": 19.51
+  },
+  {
+    "task_id": "E17",
+    "title": "Fix encoding issue",
+    "passed": true,
+    "duration": 31.91
+  },
+  {
+    "task_id": "E18",
+    "title": "Fix race condition in counter",
+    "passed": true,
+    "duration": 19.95
+  },
+  {
+    "task_id": "E19",
+    "title": "Fix incorrect sorting",
+    "passed": true,
+    "duration": 20.28
+  },
+  {
+    "task_id": "E20",
+    "title": "Fix silent data loss",
+    "passed": false,
+    "duration": 20.42
+  },
+  {
+    "task_id": "E21",
+    "title": "Run a CLI command and capture output",
+    "passed": true,
+    "duration": 10.37
+  },
+  {
+    "task_id": "E22",
+    "title": "Build a simple argument parser",
+    "passed": false,
+    "duration": 11.84
+  },
+  {
+    "task_id": "E23",
+    "title": "Pipe processing",
+    "passed": false,
+    "duration": 11.13
+  },
+  {
+    "task_id": "E24",
+    "title": "Subprocess with timeout",
+    "passed": false,
+    "duration": 15.2
+  },
+  {
+    "task_id": "E25",
+    "title": "Check exit code",
+    "passed": false,
+    "duration": 10.11
+  },
+  {
+    "task_id": "E26",
+    "title": "Extract function",
+    "passed": true,
+    "duration": 22.51
+  },
+  {
+    "task_id": "E27",
+    "title": "Add type hints",
+    "passed": true,
+    "duration": 44.11
+  },
+  {
+    "task_id": "E28",
+    "title": "Convert to class",
+    "passed": true,
+    "duration": 57.4
+  },
+  {
+    "task_id": "E29",
+    "title": "Replace magic numbers",
+    "passed": false,
+    "duration": 21.17
+  },
+  {
+    "task_id": "E30",
+    "title": "Reduce complexity",
+    "passed": true,
+    "duration": 45.09
+  },
+  {
+    "task_id": "E31",
+    "title": "Write tests for existing code",
+    "passed": true,
+    "duration": 42.53
+  },
+  {
+    "task_id": "E32",
+    "title": "Write integration test",
+    "passed": true,
+    "duration": 19.78
+  },
+  {
+    "task_id": "E33",
+    "title": "Add edge case tests",
+    "passed": true,
+    "duration": 21.13
+  },
+  {
+    "task_id": "E34",
+    "title": "Write parametrized tests",
+    "passed": true,
+    "duration": 21.04
+  },
+  {
+    "task_id": "E35",
+    "title": "Test error handling",
+    "passed": false,
+    "duration": 24.02
+  },
+  {
+    "task_id": "E36",
+    "title": "Fix cross-file import error",
+    "passed": false,
+    "duration": 10.57
+  },
+  {
+    "task_id": "E37",
+    "title": "Add missing dependency",
+    "passed": true,
+    "duration": 11.0
+  },
+  {
+    "task_id": "E38",
+    "title": "Refactor across files",
+    "passed": true,
+    "duration": 19.26
+  },
+  {
+    "task_id": "E39",
+    "title": "Fix circular dependency",
+    "passed": false,
+    "duration": 11.18
+  },
+  {
+    "task_id": "E40",
+    "title": "Add config file support",
+    "passed": false,
+    "duration": 11.51
+  },
+  {
+    "task_id": "E41",
+    "title": "Fix tool calling format",
+    "passed": false,
+    "duration": 37.56
+  },
+  {
+    "task_id": "E42",
+    "title": "Fix message trimming",
+    "passed": true,
+    "duration": 40.52
+  },
+  {
+    "task_id": "E43",
+    "title": "Add API key validation",
+    "passed": true,
+    "duration": 38.76
+  },
+  {
+    "task_id": "E44",
+    "title": "Remove module-level side effects",
+    "passed": true,
+    "duration": 59.9
+  }
+]

@@ -1,10 +1,15 @@
-import json, os
+import json, os, tempfile
 
 def save_users(users, path):
-    tmp = path + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(users, f)
-    os.replace(tmp, path)  # atomic on same filesystem
+    tmp = tempfile.NamedTemporaryFile('w', dir=os.path.dirname(path) or '.', delete=False)
+    try:
+        json.dump(users, tmp)
+        tmp.close()
+        os.replace(tmp.name, path)
+    except:
+        os.unlink(tmp.name)
+        tmp.close()
+        raise
 
 if __name__ == '__main__':
     users = [{'name': 'alice'}, {'name': 'bob'}]

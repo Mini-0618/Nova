@@ -1,6 +1,6 @@
 def sum_range(a, b):
     total = 0
-    for i in range(a, b):  # FIXED: range(a, b) excludes b, so sum_range(1,5) = 1+2+3+4 = 10
+    for i in range(a, b):
         total += i
     return total
 

@@ -1357,6 +1357,7 @@ class ToolExecutor:
                 return {"success": False, "error": f"Not a file: {path}"}
 
             lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            total_lines = len(lines)
 
             if offset is not None:
                 lines = lines[offset:]
@@ -1364,12 +1365,25 @@ class ToolExecutor:
                 lines = lines[:limit]
 
             content = "\n".join(lines)
-            return {
+
+            # Truncate oversized content to prevent context window overflow
+            MAX_CONTENT_CHARS = 20_000
+            truncated = False
+            if len(content) > MAX_CONTENT_CHARS:
+                content = content[:MAX_CONTENT_CHARS]
+                truncated = True
+
+            result = {
                 "success": True,
                 "content": content,
                 "lines": len(lines),
+                "total_lines": total_lines,
                 "file_path": str(path),
             }
+            if truncated:
+                result["truncated"] = True
+                result["warning"] = f"Content truncated from {len(chr(10).join(lines))} to {MAX_CONTENT_CHARS} chars. Use offset/limit to read specific sections."
+            return result
         except Exception as e:
             return {"success": False, "error": str(e)}
 

@@ -1,11 +1,11 @@
 import threading
 
 counter = 0
-counter_lock = threading.Lock()
+lock = threading.Lock()
 
 def increment_counter():
     global counter
-    with counter_lock:
+    with lock:
         temp = counter
         temp += 1
         counter = temp

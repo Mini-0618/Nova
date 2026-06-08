@@ -280,6 +280,10 @@ class _CodexLoopHelpers:
     def _append_tool_result(self, call_id: str, result: Any, action: Action, state: _RunState) -> None:
         """Append tool result to messages and session."""
         result_str = json.dumps(result, ensure_ascii=False, default=str)
+        # Truncate oversized tool results to prevent context window overflow
+        MAX_RESULT_CHARS = 20_000
+        if len(result_str) > MAX_RESULT_CHARS:
+            result_str = result_str[:MAX_RESULT_CHARS] + '... [TRUNCATED - result too large]'
         msg = {"role": "tool", "tool_call_id": call_id, "content": result_str}
         state.messages.append(msg)
         state.message_history.append(msg)
@@ -324,6 +328,10 @@ class _CodexLoopHelpers:
             result = self.decision_engine.execute_action(
                 Action(type=ActionType.CALL_TOOL, tool_name=tool_name, tool_args=tool_args))
             result_str = json.dumps(result, ensure_ascii=False, default=str)
+            # Truncate oversized tool results to prevent context window overflow
+            MAX_RESULT_CHARS = 20_000
+            if len(result_str) > MAX_RESULT_CHARS:
+                result_str = result_str[:MAX_RESULT_CHARS] + '... [TRUNCATED - result too large]'
             msg = {"role": "tool", "tool_call_id": call_id, "content": result_str}
             state.messages.append(msg)
             state.message_history.append(msg)
