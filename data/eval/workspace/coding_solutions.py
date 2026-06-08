@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import hashlib
 import heapq
 import inspect
@@ -104,14 +105,19 @@ class LRUCache:
 # 2. Ring Buffer
 # ============================================================
 
+_EMPTY = object()  # 哨兵对象，区分空槽位和 None 值
+
+
 class RingBuffer:
-    """线程安全环形缓冲区，满了覆盖最旧数据。"""
+    """线程安全环形缓冲区，满了覆盖最旧数据。
+    注意：不建议存储 None 值，内部使用哨兵对象区分空槽位。
+    """
 
     def __init__(self, capacity: int) -> None:
         if capacity < 1:
             raise ValueError("capacity must be >= 1")
         self.capacity = capacity
-        self.data: list[Any] = [None] * capacity
+        self.data: list[Any] = [_EMPTY] * capacity
         self.head = 0
         self.tail = 0
         self.count = 0
@@ -131,7 +137,7 @@ class RingBuffer:
             if self.count == 0:
                 raise IndexError("ring buffer is empty")
             item = self.data[self.head]
-            self.data[self.head] = None
+            self.data[self.head] = _EMPTY
             self.head = (self.head + 1) % self.capacity
             self.count -= 1
             return item
@@ -176,7 +182,16 @@ class BloomFilter:
 
         self.bit_size = max(1, int(m))
         self.hash_count = max(1, int(k))
-        self.bytes = bytearray((self.bit_size + 7) // 8)
+        byte_count = (self.bit_size + 7) // 8
+
+        # 内存上限检查：超过 256MB 时警告
+        if byte_count > 256 * 1024 * 1024:
+            raise ValueError(
+                f"Bloom filter requires {byte_count / 1024 / 1024:.0f} MB memory. "
+                f"Reduce expected_items or increase false_positive_rate."
+            )
+
+        self.bytes = bytearray(byte_count)
         self.count = 0
 
     def _hashes(self, item: Any) -> list[int]:
@@ -482,7 +497,7 @@ def traverse(path: str | Path, max_depth: int = 0, pattern: str = "") -> dict[st
                     current_node["children"].append(child)
                     stack.append((entry, child, depth + 1))
                 elif entry.is_file():
-                    if pattern and not entry.match(pattern):
+                    if pattern and not fnmatch.fnmatch(entry.name, pattern):
                         continue
                     child = {"name": entry.name, "type": "file", "size": entry.stat().st_size}
                     current_node["children"].append(child)
@@ -564,6 +579,7 @@ class TaskScheduler:
         self.cancelled: set[str] = set()
         self.seq = 0
         self.lock = threading.Lock()
+        self._wake = threading.Event()  # 用于中断 sleep
 
     def add(self, task: dict[str, Any]) -> None:
         task_id = task["id"]
@@ -584,6 +600,7 @@ class TaskScheduler:
                 "delay_ms": delay_ms, "callback": callback, "run_at": run_at,
             }
             heapq.heappush(self.heap, (run_at, -priority, self.seq, task_id))
+            self._wake.set()  # 唤醒等待中的 run()
 
     def cancel(self, task_id: str) -> bool:
         with self.lock:
@@ -630,7 +647,9 @@ class TaskScheduler:
                     task = self.tasks.pop(task_id, None)
                     sleep_time = 0
             if sleep_time > 0:
-                time.sleep(sleep_time)
+                # 分段等待，每 0.1 秒检查一次，或被新任务唤醒
+                self._wake.clear()
+                self._wake.wait(timeout=min(sleep_time, 0.1))
                 continue
             if task is None:
                 continue
