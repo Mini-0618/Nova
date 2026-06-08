@@ -1,0 +1,10 @@
+[project]
+name = "self-evolve-project"
+version = "0.1.0"
+description = "A multi-file self evolution loop for coding agents"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

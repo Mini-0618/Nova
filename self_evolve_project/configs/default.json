@@ -1,0 +1,13 @@
+{
+    "workspace": "self_evolution_runs",
+    "current_prompt": "prompts/current.md",
+    "min_improve": 0.01,
+    "timeout_sec": 120,
+    "score_keys": ["score", "accuracy", "pass_rate"],
+    "commands": {
+        "run_task": "{python} scripts/fake_task.py --prompt {prompt} --out {task_out}",
+        "eval": "{python} scripts/fake_eval.py --input {task_out} --out {eval_out}",
+        "analyze_failure": "{python} scripts/fake_analyzer.py --eval {eval_out} --out {lessons_out}",
+        "improve_prompt": "{python} scripts/fake_improver.py --prompt {prompt} --lessons {lessons_out} --out {candidate_prompt}"
+    }
+}
