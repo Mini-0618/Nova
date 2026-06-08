@@ -223,233 +223,201 @@ Requirements:
                 return False
         return True
 
-    async def run_plan(self, plan_path: str, resume: bool = False, model: str = "deepseek-chat") -> Plan:
-        """Execute a full plan with dependency-aware ordering."""
-        # Load or resume plan
+    def _load_or_resume_plan(self, plan_path: str, resume: bool) -> Plan:
+        """Load a fresh plan or resume from saved progress."""
         if resume:
             plan_data = self.load_plan(plan_path)
             saved = self.load_progress(plan_data.id)
             if saved:
-                plan = saved
-                print(f"Resuming plan: {plan.name} from task {plan.current_task_index + 1}/{plan.total_tasks}")
+                print(f"Resuming plan: {saved.name} from task {saved.current_task_index + 1}/{saved.total_tasks}")
+                return saved
+            print(f"No saved progress found. Starting fresh: {plan_data.name}")
+            return plan_data
+        return self.load_plan(plan_path)
+
+    def _print_task_header(self, task: PlanTask, is_deferred: bool = False) -> None:
+        suffix = " (deferred retry)" if is_deferred else ""
+        print(f"[{task.id}] {task.title}{suffix}")
+        print(f"  Type: {task.type}")
+        if task.target:
+            print(f"  Target: {task.target}")
+        if task.depends_on:
+            print(f"  Depends on: {task.depends_on}")
+
+    async def _execute_task_with_retry(self, task: PlanTask, plan: Plan, model: str) -> None:
+        """Execute a task with retry logic, updating plan counters."""
+        while task.retry_count <= task.max_retries:
+            task = await self.execute_task(task, plan, model)
+            if task.status == "completed":
+                plan.completed_tasks += 1
+                print(f"  DONE ({task.duration_s}s)")
+                return
+            task.retry_count += 1
+            if task.retry_count <= task.max_retries:
+                print(f"  FAILED (retry {task.retry_count}/{task.max_retries})")
+                print(f"  Error: {task.error}")
             else:
-                plan = plan_data
-                print(f"No saved progress found. Starting fresh: {plan.name}")
-        else:
-            plan = self.load_plan(plan_path)
+                plan.failed_tasks += 1
+                print(f"  FAILED (max retries reached)")
+                print(f"  Error: {task.error}")
 
-        plan.status = "running"
-        plan.started_at = plan.started_at or datetime.now().isoformat()
-        self.save_progress(plan)
-
-        # Topological sort for dependency-aware execution
-        try:
-            sorted_tasks = self.topological_sort(plan.tasks)
-        except ValueError as e:
-            print(f"Dependency error: {e}")
-            plan.status = "failed"
-            plan.finished_at = datetime.now().isoformat()
-            self.save_progress(plan)
-            return plan
-
-        # Build ordered index map
-        sorted_ids = [t.id for t in sorted_tasks]
-        task_index_map = {t.id: i for i, t in enumerate(sorted_tasks)}
-
-        print(f"\n{'='*60}")
-        print(f"Plan: {plan.name}")
-        print(f"Tasks: {plan.total_tasks} (dependency-sorted)")
-        print(f"{'='*60}\n")
-
-        # Execute tasks in topological order
-        deferred_tasks = []  # tasks skipped due to unmet deps, to retry later
-
+    async def _run_main_tasks(self, sorted_tasks: List[PlanTask], plan: Plan, model: str) -> List[PlanTask]:
+        """Execute main task list, returning deferred tasks."""
+        deferred = []
         for task in sorted_tasks:
             orig_idx = next(i for i, t in enumerate(plan.tasks) if t.id == task.id)
             plan.current_task_index = orig_idx
-
-            print(f"[{task.id}] {task.title}")
-            print(f"  Type: {task.type}")
-            if task.target:
-                print(f"  Target: {task.target}")
-            if task.depends_on:
-                print(f"  Depends on: {task.depends_on}")
-
-            # Skip if already completed
+            self._print_task_header(task)
             if task.status == "completed":
-                print(f"  SKIP (already completed)")
                 plan.completed_tasks += 1
+                print(f"  SKIP (already completed)")
                 continue
-
-            # Check dependencies
             if not self._check_dependencies_met(task, plan):
-                print(f"  DEFERRED (dependencies not met)")
                 task.status = "skipped"
-                deferred_tasks.append(task)
+                deferred.append(task)
                 plan.skipped_tasks += 1
                 self.save_progress(plan)
                 continue
-
-            # Execute with retry
-            while task.retry_count <= task.max_retries:
-                task = await self.execute_task(task, plan, model)
-
-                if task.status == "completed":
-                    plan.completed_tasks += 1
-                    print(f"  DONE ({task.duration_s}s)")
-                    break
-                elif task.status == "failed":
-                    task.retry_count += 1
-                    if task.retry_count <= task.max_retries:
-                        print(f"  FAILED (retry {task.retry_count}/{task.max_retries})")
-                        print(f"  Error: {task.error}")
-                    else:
-                        plan.failed_tasks += 1
-                        print(f"  FAILED (max retries reached)")
-                        print(f"  Error: {task.error}")
-
-            # Save progress after each task
+            await self._execute_task_with_retry(task, plan, model)
             self.save_progress(plan)
-
-            # Update plan status
             if plan.failed_tasks > 0:
                 plan.status = "partial"
+        return deferred
 
-        # Run deferred tasks (dependencies that became available later)
-        if deferred_tasks:
-            print(f"\n{'='*60}")
-            print(f"Running {len(deferred_tasks)} deferred tasks...")
-            print(f"{'='*60}\n")
+    async def _run_deferred_tasks(self, deferred: List[PlanTask], plan: Plan, model: str) -> None:
+        """Execute deferred tasks whose dependencies are now met."""
+        print(f"\n{'='*60}\nRunning {len(deferred)} deferred tasks...\n{'='*60}\n")
+        for task in deferred:
+            if not self._check_dependencies_met(task, plan):
+                print(f"[{task.id}] {task.title} — STILL BLOCKED, skipping")
+                continue
+            task.status = "pending"
+            task.retry_count = 0
+            plan.skipped_tasks -= 1
+            self._print_task_header(task, is_deferred=True)
+            await self._execute_task_with_retry(task, plan, model)
+            self.save_progress(plan)
 
-            for task in deferred_tasks:
-                if not self._check_dependencies_met(task, plan):
-                    print(f"[{task.id}] {task.title} — STILL BLOCKED, skipping")
-                    continue
-
-                task.status = "pending"
-                task.retry_count = 0
-                plan.skipped_tasks -= 1
-
-                print(f"[{task.id}] {task.title} (deferred retry)")
-
-                while task.retry_count <= task.max_retries:
-                    task = await self.execute_task(task, plan, model)
-
-                    if task.status == "completed":
-                        plan.completed_tasks += 1
-                        print(f"  DONE ({task.duration_s}s)")
-                        break
-                    elif task.status == "failed":
-                        task.retry_count += 1
-                        if task.retry_count <= task.max_retries:
-                            print(f"  FAILED (retry {task.retry_count}/{task.max_retries})")
-                        else:
-                            plan.failed_tasks += 1
-                            print(f"  FAILED (max retries reached)")
-
-                self.save_progress(plan)
-
-        # Final status
+    def _finalize_plan(self, plan: Plan) -> None:
+        """Set final plan status and generate report."""
         if plan.failed_tasks == 0:
             plan.status = "completed"
         elif plan.completed_tasks > 0:
             plan.status = "partial"
         else:
             plan.status = "failed"
-
         plan.finished_at = datetime.now().isoformat()
         self.save_progress(plan)
-
-        # Generate report
         self.generate_report(plan)
 
+    def _sort_tasks(self, plan: Plan) -> Optional[List[PlanTask]]:
+        """Topological sort of plan tasks, returning None on dependency error."""
+        try:
+            return self.topological_sort(plan.tasks)
+        except ValueError as e:
+            print(f"Dependency error: {e}")
+            plan.status = "failed"
+            plan.finished_at = datetime.now().isoformat()
+            self.save_progress(plan)
+            return None
+
+    async def run_plan(self, plan_path: str, resume: bool = False, model: str = "deepseek-chat") -> Plan:
+        """Execute a full plan with dependency-aware ordering."""
+        plan = self._load_or_resume_plan(plan_path, resume)
+        plan.status = "running"
+        plan.started_at = plan.started_at or datetime.now().isoformat()
+        self.save_progress(plan)
+        sorted_tasks = self._sort_tasks(plan)
+        if sorted_tasks is None:
+            return plan
+        print(f"\n{'='*60}\nPlan: {plan.name}\nTasks: {plan.total_tasks} (dependency-sorted)\n{'='*60}\n")
+        deferred = await self._run_main_tasks(sorted_tasks, plan, model)
+        if deferred:
+            await self._run_deferred_tasks(deferred, plan, model)
+        self._finalize_plan(plan)
         return plan
+
+    def _report_task_table(self, plan: Plan) -> list:
+        """Build the task status table rows for the report."""
+        icons = {"completed": "✅", "failed": "❌", "skipped": "⏭️",
+                 "pending": "⏳", "running": "\U0001f504"}
+        lines = ["## Tasks", "", "| # | Task | Type | Status | Duration |",
+                 "|---|------|------|--------|----------|"]
+        for i, task in enumerate(plan.tasks):
+            icon = icons.get(task.status, "❓")
+            lines.append(f"| {i+1} | {task.title} | {task.type} | {icon} {task.status} | {task.duration_s}s |")
+        lines.append("")
+        return lines
+
+    def _report_failed_detail(self, plan: Plan) -> list:
+        """Build failed task detail section."""
+        failed = [t for t in plan.tasks if t.status == "failed"]
+        if not failed:
+            return []
+        lines = ["## Failed Tasks", ""]
+        for task in failed:
+            lines.extend([f"### {task.title}", f"- Error: {task.error}", f"- Retries: {task.retry_count}"])
+            if task.result:
+                lines.extend(["```", task.result[:500], "```"])
+            lines.append("")
+        return lines
 
     def generate_report(self, plan: Plan) -> str:
         """Generate a markdown report of the plan execution."""
         report_path = REPORTS_DIR / f"{plan.id}.md"
-
-        lines = []
-        lines.append(f"# Plan Report: {plan.name}")
-        lines.append("")
-        lines.append(f"- **Plan ID**: {plan.id}")
-        lines.append(f"- **Status**: {plan.status}")
-        lines.append(f"- **Started**: {plan.started_at}")
-        lines.append(f"- **Finished**: {plan.finished_at}")
-        lines.append(f"- **Total**: {plan.total_tasks} tasks")
-        lines.append(f"- **Completed**: {plan.completed_tasks}")
-        lines.append(f"- **Failed**: {plan.failed_tasks}")
-        lines.append(f"- **Skipped**: {plan.skipped_tasks}")
-        lines.append("")
-        lines.append("## Tasks")
-        lines.append("")
-        lines.append("| # | Task | Type | Status | Duration |")
-        lines.append("|---|------|------|--------|----------|")
-
-        for i, task in enumerate(plan.tasks):
-            status_icon = {
-                "completed": "✅",
-                "failed": "❌",
-                "skipped": "⏭️",
-                "pending": "⏳",
-                "running": "🔄",
-            }.get(task.status, "❓")
-            lines.append(f"| {i+1} | {task.title} | {task.type} | {status_icon} {task.status} | {task.duration_s}s |")
-
-        lines.append("")
-
-        # Failed tasks detail
-        failed = [t for t in plan.tasks if t.status == "failed"]
-        if failed:
-            lines.append("## Failed Tasks")
-            lines.append("")
-            for task in failed:
-                lines.append(f"### {task.title}")
-                lines.append(f"- Error: {task.error}")
-                lines.append(f"- Retries: {task.retry_count}")
-                if task.result:
-                    lines.append(f"```")
-                    lines.append(task.result[:500])
-                    lines.append(f"```")
-                lines.append("")
-
-        # Completed tasks summary
+        lines = [f"# Plan Report: {plan.name}", "",
+                 f"- **Plan ID**: {plan.id}", f"- **Status**: {plan.status}",
+                 f"- **Started**: {plan.started_at}", f"- **Finished**: {plan.finished_at}",
+                 f"- **Total**: {plan.total_tasks} tasks", f"- **Completed**: {plan.completed_tasks}",
+                 f"- **Failed**: {plan.failed_tasks}", f"- **Skipped**: {plan.skipped_tasks}", ""]
+        lines.extend(self._report_task_table(plan))
+        lines.extend(self._report_failed_detail(plan))
         completed = [t for t in plan.tasks if t.status == "completed"]
         if completed:
-            lines.append("## Completed Tasks")
-            lines.append("")
+            lines.extend(["## Completed Tasks", ""])
             for task in completed:
                 lines.append(f"- ✅ {task.title} ({task.duration_s}s)")
             lines.append("")
-
         report = "\n".join(lines)
         report_path.write_text(report, encoding='utf-8')
         print(f"\nReport saved: {report_path}")
         return str(report_path)
 
-    async def generate_next_plan(self, completed_plan: Plan, model: str = "deepseek-chat") -> Optional[Plan]:
-        """Generate the next plan based on completed plan results."""
-        from runtime.loop import CodexLoop, LoopConfig
+    def _build_plan_summary(self, completed_plan: Plan) -> str:
+        """Build a text summary of completed plan results."""
+        completed = [t for t in completed_plan.tasks if t.status == "completed"]
+        failed = [t for t in completed_plan.tasks if t.status == "failed"]
+        lines = [f"Previous plan: {completed_plan.name}",
+                 f"Completed: {len(completed)}/{completed_plan.total_tasks}",
+                 f"Failed: {len(failed)}", ""]
+        if completed:
+            lines.append("What was done:")
+            for t in completed:
+                lines.append(f"- {t.title}: {t.result[:100] if t.result else 'done'}")
+        if failed:
+            lines.append("\nWhat failed:")
+            for t in failed:
+                lines.append(f"- {t.title}: {t.error}")
+        return "\n".join(lines)
 
-        # Build summary of what was done
-        completed_tasks = [t for t in completed_plan.tasks if t.status == "completed"]
-        failed_tasks = [t for t in completed_plan.tasks if t.status == "failed"]
+    def _parse_plan_response(self, response: str) -> Optional[Plan]:
+        """Extract and save a JSON plan from LLM response text."""
+        decoder = json.JSONDecoder()
+        for start_idx in range(len(response)):
+            if response[start_idx] == '{':
+                try:
+                    plan_data, _ = decoder.raw_decode(response, start_idx)
+                    plan_data['id'] = f"plan-{int(time.time())}"
+                    plan_data['created_at'] = datetime.now().isoformat()
+                    plan_path = PLANS_DIR / f"{plan_data['id']}.json"
+                    with open(plan_path, 'w', encoding='utf-8') as f:
+                        json.dump(plan_data, f, indent=2, ensure_ascii=False)
+                    return self.load_plan(str(plan_path))
+                except json.JSONDecodeError:
+                    continue
+        return None
 
-        summary = f"Previous plan: {completed_plan.name}\n"
-        summary += f"Completed: {len(completed_tasks)}/{completed_plan.total_tasks}\n"
-        summary += f"Failed: {len(failed_tasks)}\n\n"
-
-        if completed_tasks:
-            summary += "What was done:\n"
-            for t in completed_tasks:
-                summary += f"- {t.title}: {t.result[:100] if t.result else 'done'}\n"
-
-        if failed_tasks:
-            summary += "\nWhat failed:\n"
-            for t in failed_tasks:
-                summary += f"- {t.title}: {t.error}\n"
-
-        prompt = f"""Based on the previous work, generate the NEXT plan.
+    _PLAN_PROMPT_TEMPLATE = """Based on the previous work, generate the NEXT plan.
 
 {summary}
 
@@ -461,51 +429,20 @@ Requirements:
 5. Output ONLY a JSON plan object, no other text
 
 Output format:
-{{
-  "name": "Next: <plan name>",
-  "description": "<what this plan achieves>",
-  "tasks": [
-    {{
-      "id": "task-001",
-      "title": "<task title>",
-      "description": "<detailed description>",
-      "type": "code|test|fix|analyze|document|refactor",
-      "target": "<file or directory>"
-    }}
-  ]
-}}
-"""
+{{"name": "Next: <plan name>", "description": "<what this plan achieves>",
+  "tasks": [{{"id": "task-001", "title": "<title>", "description": "<desc>",
+  "type": "code|test|fix|analyze|document|refactor", "target": "<file>"}}]}}"""
+
+    async def generate_next_plan(self, completed_plan: Plan, model: str = "deepseek-chat") -> Optional[Plan]:
+        """Generate the next plan based on completed plan results."""
+        from runtime.loop import CodexLoop, LoopConfig
+        summary = self._build_plan_summary(completed_plan)
+        prompt = self._PLAN_PROMPT_TEMPLATE.format(summary=summary)
         try:
-            config = LoopConfig(
-                model=model,
-                max_iterations=5,
-                workspace=str(self.workspace),
-            )
+            config = LoopConfig(model=model, max_iterations=5, workspace=str(self.workspace))
             loop = CodexLoop(config)
             result = await loop.run_task(prompt)
-
-            response = result if isinstance(result, str) else str(result)
-            # Extract JSON from response — use raw_decode for robustness
-            plan_data = None
-            decoder = json.JSONDecoder()
-            for start_idx in range(len(response)):
-                if response[start_idx] == '{':
-                    try:
-                        plan_data, _ = decoder.raw_decode(response, start_idx)
-                        break
-                    except json.JSONDecodeError:
-                        continue
-            if plan_data:
-                plan_data['id'] = f"plan-{int(time.time())}"
-                plan_data['created_at'] = datetime.now().isoformat()
-
-                # Save the new plan
-                plan_path = PLANS_DIR / f"{plan_data['id']}.json"
-                with open(plan_path, 'w', encoding='utf-8') as f:
-                    json.dump(plan_data, f, indent=2, ensure_ascii=False)
-
-                return self.load_plan(str(plan_path))
-
+            return self._parse_plan_response(result if isinstance(result, str) else str(result))
         except Exception as e:
             print(f"Failed to generate next plan: {e}")
             return None
@@ -618,6 +555,20 @@ Output format:
             print()
 
 
+_EXAMPLE_TASKS = [
+    {"id": "task-001", "title": "Analyze project structure",
+     "description": "List all Python files, check imports, identify main modules.", "type": "analyze", "target": "."},
+    {"id": "task-002", "title": "Find and fix syntax errors",
+     "description": "Run py_compile on all .py files, fix any syntax errors found.", "type": "fix", "target": "."},
+    {"id": "task-003", "title": "Add type hints",
+     "description": "Add type hints to function signatures in the main modules.", "type": "code", "target": "runtime/"},
+    {"id": "task-004", "title": "Write tests",
+     "description": "Create pytest tests for the main functions.", "type": "test", "target": "tests/"},
+    {"id": "task-005", "title": "Update documentation",
+     "description": "Update README.md with current API and usage examples.", "type": "document", "target": "README.md"},
+]
+
+
 def create_example_plan() -> str:
     """Create an example plan file."""
     plan = {
@@ -625,49 +576,11 @@ def create_example_plan() -> str:
         "name": "Example: Refactor a Python Project",
         "description": "An example plan showing how to use the plan runner.",
         "created_at": datetime.now().isoformat(),
-        "tasks": [
-            {
-                "id": "task-001",
-                "title": "Analyze project structure",
-                "description": "List all Python files, check imports, identify main modules.",
-                "type": "analyze",
-                "target": ".",
-            },
-            {
-                "id": "task-002",
-                "title": "Find and fix syntax errors",
-                "description": "Run py_compile on all .py files, fix any syntax errors found.",
-                "type": "fix",
-                "target": ".",
-            },
-            {
-                "id": "task-003",
-                "title": "Add type hints",
-                "description": "Add type hints to function signatures in the main modules.",
-                "type": "code",
-                "target": "runtime/",
-            },
-            {
-                "id": "task-004",
-                "title": "Write tests",
-                "description": "Create pytest tests for the main functions.",
-                "type": "test",
-                "target": "tests/",
-            },
-            {
-                "id": "task-005",
-                "title": "Update documentation",
-                "description": "Update README.md with current API and usage examples.",
-                "type": "document",
-                "target": "README.md",
-            },
-        ]
+        "tasks": _EXAMPLE_TASKS,
     }
-
     path = PLANS_DIR / "example-plan.json"
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(plan, f, indent=2, ensure_ascii=False)
-
     print(f"Example plan created: {path}")
     return str(path)
 

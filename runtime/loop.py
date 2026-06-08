@@ -138,9 +138,331 @@ class LoopConfig:
     fallback_threshold: int = 3  # Consecutive failures before auto-fallback
 
 
+# ─── Run State ────────────────────────────────────────────────────────────
+
+@dataclass
+class _RunState:
+    """Mutable state for a single run_task() invocation."""
+    session_id: str
+    messages: List[Dict]
+    message_history: List[Dict]
+    data_collector: Any
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+
+
+# ─── Loop Helpers Mixin ──────────────────────────────────────────────────
+
+class _CodexLoopHelpers:
+    """Helper methods for CodexLoop, extracted to keep the main class focused."""
+
+    def _apply_smart_routing(self, task: str) -> None:
+        """Apply smart routing to select optimal model."""
+        from runtime.smart_router import get_router
+        router = get_router(monthly_budget=self.config.monthly_budget, prefer_local=self.config.prefer_local)
+        result = router.route(task=task, require_tools=True, quality_threshold=self.config.quality_threshold)
+        self.config.model = result["model_config"].model
+        self.config.provider = result["model_config"].provider
+        self._notify("routing", {"complexity": result["complexity"].value, "model": result["model_key"],
+                                  "reason": result["reason"], "estimated_cost": result["estimated_cost"]})
+
+    def _inject_memory_context(self, task: str) -> str:
+        """Build system prompt with memory context injection."""
+        system_prompt = self.config.system_prompt
+        if self.memory_mgr and self.config.memory_context_max > 0:
+            ctx = self.memory_mgr.get_relevant_memories_for_task(task, max_memories=self.config.memory_context_max)
+            if ctx:
+                system_prompt = f"{system_prompt}\n\n{ctx}"
+        return system_prompt
+
+    def _init_run(self, task: str, session_id: Optional[str]) -> _RunState:
+        """Initialize run context: session, memory, messages, data collector."""
+        if self.config.enable_smart_routing:
+            self._apply_smart_routing(task)
+        if session_id:
+            self._current_session = self.session_mgr.get_session(session_id)
+        if not self._current_session:
+            self._current_session = self.session_mgr.create_session(
+                model=self.config.model, provider=self.config.provider, metadata={"task": task})
+        sid = self._current_session.id
+        if self.memory_mgr:
+            self.memory_mgr.set_session(sid)
+            self.memory_mgr.store(f"Task: {task}", importance=0.8, tags=["task", "current"], source="user")
+        system_prompt = self._inject_memory_context(task)
+        messages = _build_messages(task, [], system_prompt, max_context_tokens=self.config.max_context_tokens)
+        return _RunState(session_id=sid, messages=messages, message_history=[],
+                         data_collector=DataCollector(session_id=sid))
+
+    def _make_stream_cb(self) -> Optional[Callable]:
+        """Build streaming callback if streaming is enabled."""
+        if not self.config.stream:
+            return None
+        def cb(chunk: str):
+            self._notify("stream_chunk", {"iteration": self._iteration, "chunk": chunk})
+        return cb
+
+    async def _call_llm_with_fallback(self, messages: List[Dict], stream_cb: Optional[Callable]) -> Optional[Dict]:
+        """Call LLM with auto-fallback to backup models on failure."""
+        try:
+            return await _call_llm_async(messages, self.config, _resolve_api_key(),
+                                          self.config.provider, self.config.model, stream_callback=stream_cb)
+        except Exception as err:
+            self._consecutive_failures += 1
+            if (self.config.fallback_models and self._consecutive_failures >= self.config.fallback_threshold):
+                new_model = self._try_fallback()
+                if new_model:
+                    self._notify("auto_fallback", {"new_model": new_model, "error": str(err)[:200]})
+                    return await _call_llm_async(messages, self.config, _resolve_api_key(),
+                                                  self.config.provider, self.config.model, stream_callback=stream_cb)
+                self.error = f"All models failed: {err}"
+                self.status = "error: all models failed"
+                self._running = False
+                return None
+            self._notify("llm_failure", {"consecutive_failures": self._consecutive_failures, "error": str(err)[:200]})
+            return None
+
+    def _track_usage(self, response: Dict, session_id: str) -> tuple:
+        """Track token usage and update session. Returns (input_tok, output_tok)."""
+        usage = response.get("usage", {})
+        input_tok = usage.get("input_tokens", 0)
+        output_tok = usage.get("completion_tokens", 0)
+        self.session_mgr.update_tokens(session_id, input_tok, output_tok,
+                                        cost=_estimate_cost(input_tok, output_tok, self.config.provider))
+        return input_tok, output_tok
+
+    def _check_token_budget(self) -> bool:
+        """Check if token budget is exceeded. Returns True if exceeded."""
+        if self.config.max_total_tokens > 0 and self.total_tokens_used >= self.config.max_total_tokens:
+            self.error = f"token_budget_exceeded ({self.total_tokens_used}/{self.config.max_total_tokens})"
+            self.status = "token_budget_exceeded"
+            self._running = False
+            self._notify("token_budget_exceeded", {"total_tokens": self.total_tokens_used, "budget": self.config.max_total_tokens})
+            return True
+        return False
+
+    def _build_assistant_msg(self, output_items: List[Dict]) -> Dict:
+        """Build assistant message dict from output items."""
+        msg = {"role": "assistant", "content": ""}
+        if any(item.get("type") == "function_call" for item in output_items):
+            msg["tool_calls"] = [{
+                "id": item.get("call_id") or f"auto_{id(item)}", "type": "function",
+                "function": {"name": item.get("name", ""), "arguments": item.get("arguments", "{}")}
+            } for item in output_items if item.get("type") == "function_call"]
+        return msg
+
+    def _enforce_context_window(self, messages: List[Dict]) -> List[Dict]:
+        """Truncate oldest messages when context window is exceeded."""
+        if len(messages) <= 2:
+            return messages
+        max_chars = self.config.max_context_tokens * 4 if self.config.max_context_tokens > 0 else MAX_MESSAGES_CHARS
+        total_chars = sum(_msg_char_len(m) for m in messages)
+        if total_chars <= max_chars:
+            return messages
+        system_msg, recent = messages[0], messages[1:]
+        while recent and total_chars > max_chars:
+            removed = recent.pop(0)
+            if removed.get("role") == "assistant" and removed.get("tool_calls"):
+                if recent and recent[0].get("role") == "tool":
+                    recent.pop(0)
+            total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in recent)
+        while recent and recent[0].get("role") == "tool":
+            recent.pop(0)
+            total_chars = _msg_char_len(system_msg) + sum(_msg_char_len(m) for m in recent)
+        return [system_msg] + recent
+
+    def _find_call_id(self, action: Action, output_items: List[Dict]) -> Optional[str]:
+        """Find the call_id for a tool call from output items."""
+        for item in output_items:
+            if item.get("type") == "function_call" and item.get("name") == action.tool_name:
+                return item.get("call_id")
+        return f"auto_{id(action)}"
+
+    def _append_tool_result(self, call_id: str, result: Any, action: Action, state: _RunState) -> None:
+        """Append tool result to messages and session."""
+        result_str = json.dumps(result, ensure_ascii=False, default=str)
+        msg = {"role": "tool", "tool_call_id": call_id, "content": result_str}
+        state.messages.append(msg)
+        state.message_history.append(msg)
+        self.session_mgr.append_message(state.session_id, msg)
+        self.session_mgr.append_tool_result(state.session_id, {
+            "iteration": self._iteration, "tool": action.tool_name, "args": action.tool_args,
+            "success": result.get("success") if isinstance(result, dict) else False,
+            "timestamp": int(time.time())})
+
+    def _track_tool_decision(self, action: Action, result: Any) -> None:
+        """Track tool call decision for memory."""
+        self._key_decisions.append({
+            "iteration": self._iteration, "tool": action.tool_name,
+            "success": result.get("success") if isinstance(result, dict) else False})
+
+    def _remember_tool_result(self, action: Action, result: Any) -> None:
+        """Store important tool results in memory."""
+        if not self.memory_mgr or not self.config.auto_remember:
+            return
+        try:
+            success = result.get("success") if isinstance(result, dict) else False
+            if not success and isinstance(result, dict):
+                error_msg = result.get("error", "")
+                if error_msg:
+                    self.memory_mgr.store(f"Tool error ({action.tool_name}): {error_msg}",
+                                           importance=0.7, tags=["error", action.tool_name], source="tool_execution")
+            elif success and action.tool_name in ("write_file", "edit_file", "create_directory"):
+                fp = action.tool_args.get("path", "") if action.tool_args else ""
+                if fp:
+                    self.memory_mgr.store(f"Modified file: {fp}", importance=0.5,
+                                           tags=["file", "modified", action.tool_name], source="tool_execution")
+        except Exception:
+            _log.warning("Failed to store tool execution in memory", exc_info=True)
+
+    async def _execute_pending_calls(self, state: _RunState) -> None:
+        """Execute remaining pending tool calls from same LLM response."""
+        pending = getattr(self.decision_engine, '_pending_calls', [])
+        while pending:
+            call_id, tool_name, tool_args = pending.pop(0)
+            self._notify("iteration", {"iteration": self._iteration, "session_id": state.session_id,
+                                        "action": "executing_tool", "tool": tool_name, "args": tool_args})
+            result = self.decision_engine.execute_action(
+                Action(type=ActionType.CALL_TOOL, tool_name=tool_name, tool_args=tool_args))
+            result_str = json.dumps(result, ensure_ascii=False, default=str)
+            msg = {"role": "tool", "tool_call_id": call_id, "content": result_str}
+            state.messages.append(msg)
+            state.message_history.append(msg)
+            self.session_mgr.append_tool_result(state.session_id, {
+                "iteration": self._iteration, "tool": tool_name, "args": tool_args,
+                "success": result.get("success") if isinstance(result, dict) else False,
+                "timestamp": int(time.time())})
+            self.decision_engine._pending_calls = pending
+
+    def _record_tool_iteration(self, task: str, assistant_msg: Dict, response: Dict,
+                                state: _RunState, input_tok: int, output_tok: int, result: Any) -> None:
+        """Record training data for a tool iteration."""
+        try:
+            tc_list = assistant_msg.get("tool_calls", [])
+            tool_results = [{"tool_call_id": m.get("tool_call_id", ""), "content": m.get("content", ""), "success": True}
+                             for m in state.messages if m.get("role") == "tool"]
+            state.data_collector.record(
+                task=task, messages_sent=state.messages[:-1], llm_response=response,
+                tool_calls=tc_list, tool_results=tool_results,
+                success=result.get("success") if isinstance(result, dict) else False,
+                tokens_used=input_tok + output_tok, iteration=self._iteration)
+        except Exception:
+            _log.warning("Failed to collect training data for iteration %d", self._iteration, exc_info=True)
+
+    def _maybe_checkpoint(self, session_id: str) -> None:
+        """Save checkpoint if enough time has elapsed."""
+        if time.time() - self._last_save > self.config.auto_save_interval_sec:
+            self.session_mgr.checkpoint(self._current_session)
+            self._last_save = time.time()
+            self._notify("checkpoint", {"session_id": session_id})
+
+    def _handle_respond(self, action: Action, task: str, state: _RunState) -> Optional[str]:
+        """Handle RESPOND action. Returns final text or None to continue."""
+        if action.will_continue:
+            return None
+        try:
+            state.data_collector.record(task=task, messages_sent=state.messages, llm_response={},
+                                         tool_calls=[], tool_results=[], success=True,
+                                         tokens_used=self.total_tokens_used, iteration=self._iteration)
+        except Exception:
+            _log.warning("Failed to record final response training data", exc_info=True)
+        self.status = "completed"
+        self._running = False
+        self._current_session.status = "completed"
+        self.session_mgr.update_session(self._current_session)
+        return action.response_text or ""
+
+    async def _handle_tool_calls(self, action: Action, output_items: List[Dict], state: _RunState,
+                                  task: str, assistant_msg: Dict, response: Dict,
+                                  input_tok: int, output_tok: int) -> None:
+        """Handle CALL_TOOL action: execute tool, track results, handle pending calls."""
+        call_id = self._find_call_id(action, output_items)
+        self._notify("iteration", {"iteration": self._iteration, "session_id": state.session_id,
+                                    "action": "executing_tool", "tool": action.tool_name, "args": action.tool_args})
+        result = self.decision_engine.execute_action(action)
+        self._append_tool_result(call_id, result, action, state)
+        self._track_tool_decision(action, result)
+        self._remember_tool_result(action, result)
+        await self._execute_pending_calls(state)
+        self._record_tool_iteration(task, assistant_msg, response, state, input_tok, output_tok, result)
+        self._maybe_checkpoint(state.session_id)
+
+    async def _run_iteration(self, task: str, state: _RunState) -> Optional[str]:
+        """Execute a single iteration of the main loop. Returns final text or None."""
+        self._iteration += 1
+        self.iteration_count = self._iteration
+        self.status = f"iterating ({self._iteration})"
+        self._notify("iteration", {"iteration": self._iteration, "session_id": state.session_id, "action": "calling_llm"})
+        response = await self._call_llm_with_fallback(state.messages, self._make_stream_cb())
+        if response is None:
+            return None
+        self._consecutive_failures = 0
+        input_tok, output_tok = self._track_usage(response, state.session_id)
+        state.total_input_tokens += input_tok
+        state.total_output_tokens += output_tok
+        self.total_tokens_used = state.total_input_tokens + state.total_output_tokens
+        if self._check_token_budget():
+            return None
+        output_items = _extract_output_items(response)
+        assistant_msg = self._build_assistant_msg(output_items)
+        state.messages.append(assistant_msg)
+        state.message_history.append(assistant_msg)
+        state.messages = self._enforce_context_window(state.messages)
+        action = self.decision_engine.decide(output_items)
+        if action.type == ActionType.RESPOND:
+            return self._handle_respond(action, task, state)
+        if action.type == ActionType.CALL_TOOL:
+            await self._handle_tool_calls(action, output_items, state, task, assistant_msg, response, input_tok, output_tok)
+        elif action.type == ActionType.ERROR:
+            self.error, self.status, self._running = action.reasoning, f"error: {action.reasoning}", False
+        elif action.type == ActionType.LOOP_END:
+            self._running = False
+        return None
+
+    def _save_training_data(self, data_collector: Any) -> None:
+        """Save training data collector."""
+        try:
+            self._data_collector = data_collector
+            data_collector.save()
+        except Exception:
+            _log.warning("Failed to save training data collector", exc_info=True)
+
+    def _save_session_memory(self, task: str) -> None:
+        """Save session summary to memory system."""
+        success = not self.error and "error" not in (self.status or "").lower()
+        duration_sec = int(time.time() - self.start_time) if self.start_time else 0
+        tools_used = [d["tool"] for d in self._key_decisions]
+        tool_summary = ", ".join(tools_used) if tools_used else "none"
+        failed_tools = [d["tool"] for d in self._key_decisions if not d.get("success")]
+        memory_content = (f"Task: {task[:200]}\nResult: {'success' if success else 'failure'}\n"
+                           f"Iterations: {self._iteration}, Duration: {duration_sec}s\nTools used: {tool_summary}")
+        if self.error:
+            memory_content += f"\nError: {self.error[:200]}"
+        importance = 0.7 if self.error else (0.6 if self._iteration > 10 else 0.5)
+        self.memory_mgr.remember(memory_content, importance=importance,
+                                  tags=["session", "outcome", "success" if success else "failure"],
+                                  title=f"Task: {task[:50]}")
+        if failed_tools:
+            self.memory_mgr.learn(f"Tools that failed during task '{task[:100]}': {', '.join(failed_tools)}",
+                                   tags=["tool_failure", "learning"],
+                                   title=f"Tool failures: {', '.join(failed_tools)}", importance=0.6)
+        self.memory_mgr.end_session(promote_important=True)
+
+    def _finalize_run(self, task: str, data_collector: Any) -> None:
+        """Finalize run: save data, update session, save memory."""
+        self._save_training_data(data_collector)
+        self._current_session.status = "error" if self.error else "completed"
+        self.session_mgr.update_session(self._current_session)
+        self.status = self.status or "finished"
+        if self.memory_mgr and self.config.auto_remember:
+            try:
+                self._save_session_memory(task)
+            except Exception as mem_err:
+                self._notify("memory_error", {"error": str(mem_err)})
+
+
 # ─── Main Loop Engine ────────────────────────────────────────────────────
 
-class CodexLoop:
+class CodexLoop(_CodexLoopHelpers):
     """
     The main loop: task -> LLM -> decide -> execute -> repeat -> respond.
     Runs fully autonomously.
@@ -155,108 +477,65 @@ class CodexLoop:
         self._current_session: Optional[Session] = None
         self._iteration = 0
         self._last_save = time.time()
-        self._key_decisions: List[Dict[str, Any]] = []  # Track tool calls for memory
+        self._key_decisions: List[Dict[str, Any]] = []
         self._listeners: List[Callable] = []
-
-        # Memory system
         self.memory_mgr: Optional[MemoryManager] = None
         if self.config.enable_memory:
             self.memory_mgr = get_memory_manager()
-
         self.status = "idle"
         self.current_task = ""
         self.iteration_count = 0
         self.total_tokens_used = 0
         self.start_time: Optional[float] = None
         self.error: Optional[str] = None
-
-        # Model switching state
         self._consecutive_failures = 0
-        self._fallback_index = 0  # index into fallback_models
+        self._fallback_index = 0
         self._model_switch_history: List[Dict[str, str]] = []
 
     async def switch_model(self, model_name: str, provider: str = "") -> Dict[str, Any]:
-        """Switch to a different model at runtime.
-
-        Args:
-            model_name: Target model name (e.g. "deepseek-chat", "gpt-4o")
-            provider: Target provider (auto-inferred if empty)
-
-        Returns:
-            {success: bool, old_model: str, new_model: str, error: str}
-        """
+        """Switch to a different model at runtime."""
         old_model = self.config.model
         old_provider = self.config.provider
-
         if model_name == old_model and (not provider or provider == old_provider):
             return {"success": True, "old_model": old_model, "new_model": old_model,
                     "error": "", "note": "already using this model"}
-
-        # Resolve provider
         new_provider = provider or _infer_provider(model_name)
-
-        # Verify new model is reachable
         try:
             ok = await _verify_model(model_name, new_provider)
         except Exception as e:
             return {"success": False, "old_model": old_model, "new_model": model_name,
                     "error": f"verification failed: {e}"}
-
         if not ok:
             return {"success": False, "old_model": old_model, "new_model": model_name,
                     "error": "model verification returned empty response"}
-
-        # Apply switch
         self.config.model = model_name
         self.config.provider = new_provider
         self._consecutive_failures = 0
-
-        record = {
-            "from": old_model,
-            "from_provider": old_provider,
-            "to": model_name,
-            "to_provider": new_provider,
-            "reason": "manual",
-            "timestamp": time.time(),
-        }
+        record = {"from": old_model, "from_provider": old_provider, "to": model_name,
+                  "to_provider": new_provider, "reason": "manual", "timestamp": time.time()}
         self._model_switch_history.append(record)
-
         self._notify("model_switched", record)
         return {"success": True, "old_model": old_model, "new_model": model_name, "error": ""}
 
     def _try_fallback(self) -> Optional[str]:
-        """Attempt to switch to the next fallback model.
-
-        Returns:
-            New model name if switched, None if no more fallbacks.
-        """
+        """Attempt to switch to the next fallback model."""
         fallbacks = self.config.fallback_models
         if not fallbacks or self._fallback_index >= len(fallbacks):
             return None
-
         new_model = fallbacks[self._fallback_index]
         self._fallback_index += 1
-
         old_model = self.config.model
         new_provider = _infer_provider(new_model)
-
         self.config.model = new_model
         self.config.provider = new_provider
         self._consecutive_failures = 0
-
-        record = {
-            "from": old_model,
-            "to": new_model,
-            "to_provider": new_provider,
-            "reason": "auto_fallback",
-            "timestamp": time.time(),
-        }
+        record = {"from": old_model, "to": new_model, "to_provider": new_provider,
+                  "reason": "auto_fallback", "timestamp": time.time()}
         self._model_switch_history.append(record)
         self._notify("model_fallback", record)
         return new_model
 
     def get_model_switch_history(self) -> List[Dict[str, str]]:
-        """Return the history of model switches in this session."""
         return list(self._model_switch_history)
 
     def add_listener(self, cb: Callable):
@@ -271,6 +550,7 @@ class CodexLoop:
 
     async def run_task(self, task: str, session_id: Optional[str] = None,
                        timeout_sec: Optional[float] = None) -> str:
+        """Run a task autonomously through the LLM loop."""
         self._running = True
         self.status = "running"
         self.current_task = task
@@ -278,467 +558,21 @@ class CodexLoop:
         self.start_time = time.time()
         self.error = None
         self._key_decisions = []
-
-        # Smart routing: automatically select the optimal model
-        if self.config.enable_smart_routing:
-            from runtime.smart_router import get_router
-            router = get_router(
-                monthly_budget=self.config.monthly_budget,
-                prefer_local=self.config.prefer_local,
-            )
-            routing_result = router.route(
-                task=task,
-                require_tools=True,  # CodexLoop needs tool support
-                quality_threshold=self.config.quality_threshold,
-            )
-
-            # Update config with routed model
-            self.config.model = routing_result["model_config"].model
-            self.config.provider = routing_result["model_config"].provider
-
-            self._notify("routing", {
-                "complexity": routing_result["complexity"].value,
-                "model": routing_result["model_key"],
-                "reason": routing_result["reason"],
-                "estimated_cost": routing_result["estimated_cost"],
-            })
-
-        if session_id:
-            self._current_session = self.session_mgr.get_session(session_id)
-        if not self._current_session:
-            self._current_session = self.session_mgr.create_session(
-                model=self.config.model,
-                provider=self.config.provider,
-                metadata={"task": task},
-            )
-
-        session_id = self._current_session.id
-
-        # Initialize memory for this session
-        if self.memory_mgr:
-            self.memory_mgr.set_session(session_id)
-            # Store task in working memory
-            self.memory_mgr.store(
-                f"Task: {task}",
-                importance=0.8,
-                tags=["task", "current"],
-                source="user"
-            )
-
-        # Build messages with memory context injection
-        system_prompt = self.config.system_prompt
-        if self.memory_mgr and self.config.memory_context_max > 0:
-            memory_context = self.memory_mgr.get_relevant_memories_for_task(
-                task, max_memories=self.config.memory_context_max
-            )
-            if memory_context:
-                system_prompt = f"{system_prompt}\n\n{memory_context}"
-
-        messages = _build_messages(task, [], system_prompt,
-                                     max_context_tokens=self.config.max_context_tokens)
-        message_history: List[Dict] = []
-        total_input_tokens = 0
-
-        # Initialize data collector for training data
-        data_collector = DataCollector(session_id=session_id)
-        total_output_tokens = 0
-
+        state = self._init_run(task, session_id)
         try:
             while self._running and self._iteration < self.config.max_iterations:
-                self._iteration += 1
-                self.iteration_count = self._iteration
-                self.status = f"iterating ({self._iteration})"
-                self._notify("iteration", {
-                    "iteration": self._iteration,
-                    "session_id": session_id,
-                    "action": "calling_llm",
-                })
-
-                # Build stream callback if streaming is enabled
-                _stream_cb = None
-                if self.config.stream:
-                    def _stream_cb(chunk: str):
-                        self._notify("stream_chunk", {
-                            "iteration": self._iteration,
-                            "chunk": chunk,
-                        })
-
-                try:
-                    response = await _call_llm_async(
-                        messages, self.config,
-                        _resolve_api_key(),
-                        self.config.provider,
-                        self.config.model,
-                        stream_callback=_stream_cb,
-                    )
-                except Exception as llm_err:
-                    self._consecutive_failures += 1
-                    # Auto-fallback when consecutive failures reach threshold
-                    if (self.config.fallback_models
-                            and self._consecutive_failures >= self.config.fallback_threshold):
-                        new_model = self._try_fallback()
-                        if new_model:
-                            self._notify("auto_fallback", {
-                                "new_model": new_model,
-                                "consecutive_failures": self._consecutive_failures,
-                                "error": str(llm_err)[:200],
-                            })
-                            # Retry with the new model
-                            response = await _call_llm_async(
-                                messages, self.config,
-                                _resolve_api_key(),
-                                self.config.provider,
-                                self.config.model,
-                                stream_callback=_stream_cb,
-                            )
-                        else:
-                            # No more fallbacks -- set error and break
-                            self.error = f"All models failed: {llm_err}"
-                            self.status = "error: all models failed"
-                            self._running = False
-                            break
-                    else:
-                        # Below threshold -- log and continue to next iteration
-                        self._notify("llm_failure", {
-                            "consecutive_failures": self._consecutive_failures,
-                            "threshold": self.config.fallback_threshold,
-                            "error": str(llm_err)[:200],
-                        })
-                        continue
-
-                # Success -- reset consecutive failure counter
-                self._consecutive_failures = 0
-
-                usage = response.get("usage", {})
-                input_tok = usage.get("input_tokens", 0)
-                output_tok = usage.get("completion_tokens", 0)
-                total_input_tokens += input_tok
-                total_output_tokens += output_tok
-                self.total_tokens_used = total_input_tokens + total_output_tokens
-
-                # Token budget check
-                if self.config.max_total_tokens > 0 and self.total_tokens_used >= self.config.max_total_tokens:
-                    self.error = f"token_budget_exceeded ({self.total_tokens_used}/{self.config.max_total_tokens})"
-                    self.status = "token_budget_exceeded"
-                    self._running = False
-                    self._notify("token_budget_exceeded", {
-                        "total_tokens": self.total_tokens_used,
-                        "budget": self.config.max_total_tokens,
-                        "iteration": self._iteration,
-                    })
-                    break
-
-                self.session_mgr.update_tokens(
-                    session_id, input_tok, output_tok,
-                    cost=_estimate_cost(input_tok, output_tok, self.config.provider),
-                )
-
-                output_items = _extract_output_items(response)
-
-                # Build assistant message with content AND tool_calls
-                assistant_msg = {"role": "assistant", "content": ""}
-                has_tool_calls = any(item.get("type") == "function_call" for item in output_items)
-                if has_tool_calls:
-                    tool_calls_out = []
-                    for item in output_items:
-                        if item.get("type") == "function_call":
-                            cid = item.get("call_id") or f"auto_{id(item)}"
-                            tool_calls_out.append({
-                                "id": cid,
-                                "type": "function",
-                                "function": {
-                                    "name": item.get("name", ""),
-                                    "arguments": item.get("arguments", "{}"),
-                                }
-                            })
-                    assistant_msg["tool_calls"] = tool_calls_out
-                    assistant_msg["content"] = ""
-
-                # CRITICAL: append assistant message THEN tool result to messages so LLM sees the pairing
-                messages.append(assistant_msg)
-                message_history.append(assistant_msg)
-
-                # Enforce context window limit: truncate oldest messages when exceeding threshold
-                if len(messages) > 2:  # At least system + 1 message
-                    if self.config.max_context_tokens > 0:
-                        max_chars = self.config.max_context_tokens * 4
-                    else:
-                        max_chars = MAX_MESSAGES_CHARS
-                    total_chars = sum(_msg_char_len(m) for m in messages)
-                    if total_chars > max_chars:
-                        system_msg = messages[0]
-                        recent_msgs = messages[1:]
-                        while recent_msgs and total_chars > max_chars:
-                            removed = recent_msgs.pop(0)
-                            if removed.get("role") == "assistant" and removed.get("tool_calls"):
-                                if recent_msgs and recent_msgs[0].get("role") == "tool":
-                                    recent_msgs.pop(0)
-                            total_chars = _msg_char_len(system_msg) + \
-                                sum(_msg_char_len(m) for m in recent_msgs)
-
-                        while recent_msgs and recent_msgs[0].get("role") == "tool":
-                            recent_msgs.pop(0)
-                            total_chars = _msg_char_len(system_msg) + \
-                                sum(_msg_char_len(m) for m in recent_msgs)
-
-                        messages = [system_msg] + recent_msgs
-
-                action = self.decision_engine.decide(output_items)
-
-                if action.type == ActionType.RESPOND:
-                    if not action.will_continue:
-                        # Record final response as training data
-                        try:
-                            data_collector.record(
-                                task=task,
-                                messages_sent=messages,
-                                llm_response=response,
-                                tool_calls=[],
-                                tool_results=[],
-                                success=True,
-                                tokens_used=input_tok + output_tok,
-                                iteration=self._iteration,
-                            )
-                        except Exception:
-                            _log.warning("Failed to record final response training data", exc_info=True)
-                        self.status = "completed"
-                        self._running = False
-                        final_text = action.response_text or ""
-                        self._current_session.status = "completed"
-                        self.session_mgr.update_session(self._current_session)
-                        return final_text
-                    # will_continue=True: suppress the text and continue looping
-                    continue
-
-                elif action.type == ActionType.CALL_TOOL:
-                    # Find the call_id for this tool call from output_items
-                    call_id = None
-                    for item in output_items:
-                        if item.get("type") == "function_call" and item.get("name") == action.tool_name:
-                            call_id = item.get("call_id")
-                            break
-                    if not call_id:
-                        call_id = f"auto_{id(action)}"
-                    self._notify("iteration", {
-                        "iteration": self._iteration,
-                        "session_id": session_id,
-                        "action": "executing_tool",
-                        "tool": action.tool_name,
-                        "args": action.tool_args,
-                    })
-                    result = self.decision_engine.execute_action(action)
-
-                    result_str = json.dumps(result, ensure_ascii=False, default=str)
-                    tool_result_msg = {
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "content": result_str,
-                    }
-                    messages.append(tool_result_msg)
-                    message_history.append(tool_result_msg)
-                    self.session_mgr.append_message(session_id, tool_result_msg)
-                    self.session_mgr.append_tool_result(session_id, {
-                        "iteration": self._iteration,
-                        "tool": action.tool_name,
-                        "args": action.tool_args,
-                        "success": result.get("success") if isinstance(result, dict) else False,
-                        "timestamp": int(time.time()),
-                    })
-
-                    # Track key decisions for memory
-                    self._key_decisions.append({
-                        "iteration": self._iteration,
-                        "tool": action.tool_name,
-                        "success": result.get("success") if isinstance(result, dict) else False,
-                    })
-
-                    # Memory: Store important tool results
-                    if self.memory_mgr and self.config.auto_remember:
-                        try:
-                            success = result.get("success") if isinstance(result, dict) else False
-                            # Remember errors for learning
-                            if not success and isinstance(result, dict):
-                                error_msg = result.get("error", "")
-                                if error_msg:
-                                    self.memory_mgr.store(
-                                        f"Tool error ({action.tool_name}): {error_msg}",
-                                        importance=0.7,
-                                        tags=["error", action.tool_name],
-                                        source="tool_execution"
-                                    )
-                            # Remember successful file operations
-                            elif success and action.tool_name in ("write_file", "edit_file", "create_directory"):
-                                file_path = action.tool_args.get("path", "") if action.tool_args else ""
-                                if file_path:
-                                    self.memory_mgr.store(
-                                        f"Modified file: {file_path}",
-                                        importance=0.5,
-                                        tags=["file", "modified", action.tool_name],
-                                        source="tool_execution"
-                                    )
-                        except Exception:
-                            _log.warning("Failed to store tool execution in memory", exc_info=True)
-
-                    # Execute remaining pending calls from same LLM response
-                    pending = getattr(self.decision_engine, '_pending_calls', [])
-                    while pending:
-                        next_call_id, next_tool_name, next_tool_args = pending.pop(0)
-                        self._notify("iteration", {
-                            "iteration": self._iteration,
-                            "session_id": session_id,
-                            "action": "executing_tool",
-                            "tool": next_tool_name,
-                            "args": next_tool_args,
-                        })
-                        next_result = self.decision_engine.execute_action(
-                            Action(type=ActionType.CALL_TOOL, tool_name=next_tool_name, tool_args=next_tool_args)
-                        )
-                        next_result_str = json.dumps(next_result, ensure_ascii=False, default=str)
-                        next_tool_msg = {
-                            "role": "tool",
-                            "tool_call_id": next_call_id,
-                            "content": next_result_str,
-                        }
-                        messages.append(next_tool_msg)
-                        message_history.append(next_tool_msg)
-                        self.session_mgr.append_tool_result(session_id, {
-                            "iteration": self._iteration,
-                            "tool": next_tool_name,
-                            "args": next_tool_args,
-                            "success": next_result.get("success") if isinstance(next_result, dict) else False,
-                            "timestamp": int(time.time()),
-                        })
-                        # Clear pending so execute_action doesn't see stale state
-                        self.decision_engine._pending_calls = pending
-
-                    # Record training data for this iteration
-                    try:
-                        tc_list = assistant_msg.get("tool_calls", [])
-                        tool_results_for_record = []
-                        for msg in messages:
-                            if msg.get("role") == "tool":
-                                tool_results_for_record.append({
-                                    "tool_call_id": msg.get("tool_call_id", ""),
-                                    "content": msg.get("content", ""),
-                                    "success": True,  # will be updated below
-                                })
-                        success_flag = result.get("success") if isinstance(result, dict) else False
-                        data_collector.record(
-                            task=task,
-                            messages_sent=messages[:-1],  # exclude the tool result we just added
-                            llm_response=response,
-                            tool_calls=tc_list,
-                            tool_results=tool_results_for_record,
-                            success=success_flag,
-                            tokens_used=input_tok + output_tok,
-                            iteration=self._iteration,
-                        )
-                    except Exception:
-                        _log.warning("Failed to collect training data for iteration %d", self._iteration, exc_info=True)
-
-                    if time.time() - self._last_save > self.config.auto_save_interval_sec:
-                        self.session_mgr.checkpoint(self._current_session)
-                        self._last_save = time.time()
-                        self._notify("checkpoint", {"session_id": session_id})
-
-                elif action.type == ActionType.ERROR:
-                    self.error = action.reasoning
-                    self.status = f"error: {action.reasoning}"
-                    self._running = False
-                    break
-
-                elif action.type == ActionType.LOOP_END:
-                    self._running = False
-                    break
-
+                result = await self._run_iteration(task, state)
+                if result is not None:
+                    return result
             if self._iteration >= self.config.max_iterations:
                 self.status = f"max_iterations_reached ({self._iteration})"
                 self.error = f"Max iterations ({self.config.max_iterations}) reached"
-
         except Exception as e:
             self.error = f"{type(e).__name__}: {e}"
             self.status = f"error: {self.error}"
             traceback.print_exc()
-
         finally:
-            # Save training data
-            try:
-                self._data_collector = data_collector
-                data_collector.save()
-            except Exception:
-                _log.warning("Failed to save training data collector", exc_info=True)
-
-            self._current_session.status = "error" if self.error else "completed"
-            self.session_mgr.update_session(self._current_session)
-            self.status = self.status or "finished"
-
-            # Memory system: save session summary with key_decisions and end session
-            if self.memory_mgr and self.config.auto_remember:
-                try:
-                    success = not self.error and "error" not in (self.status or "").lower()
-                    duration_sec = int(time.time() - self.start_time) if self.start_time else 0
-
-                    # Build task summary for memory
-                    task_summary = {
-                        "task": task,
-                        "success": success,
-                        "status": self.status,
-                        "iterations": self._iteration,
-                        "duration_sec": duration_sec,
-                        "error": self.error,
-                    }
-
-                    # Summarize key decisions (tool calls made)
-                    tools_used = [d["tool"] for d in self._key_decisions]
-                    tool_summary = ", ".join(tools_used) if tools_used else "none"
-                    failed_tools = [d["tool"] for d in self._key_decisions if not d.get("success")]
-                    key_decisions_summary = {
-                        "tools_called": tools_used,
-                        "total_tool_calls": len(self._key_decisions),
-                        "failed_tools": failed_tools,
-                    }
-
-                    # Build memory content
-                    memory_content = (
-                        f"Task: {task[:200]}\n"
-                        f"Result: {'success' if success else 'failure'}\n"
-                        f"Iterations: {self._iteration}, Duration: {duration_sec}s\n"
-                        f"Tools used: {tool_summary}"
-                    )
-                    if self.error:
-                        memory_content += f"\nError: {self.error[:200]}"
-
-                    # Determine importance based on outcome
-                    importance = 0.5
-                    if self.error:
-                        importance = 0.7  # Errors are worth remembering
-                    elif self._iteration > 10:
-                        importance = 0.6  # Complex tasks
-
-                    # Store as episodic memory with structured metadata
-                    self.memory_mgr.remember(
-                        memory_content,
-                        importance=importance,
-                        tags=["session", "outcome", "success" if success else "failure"],
-                        title=f"Task: {task[:50]}"
-                    )
-
-                    # Also learn from failures as semantic knowledge
-                    if failed_tools:
-                        self.memory_mgr.learn(
-                            f"Tools that failed during task '{task[:100]}': {', '.join(failed_tools)}",
-                            tags=["tool_failure", "learning"],
-                            title=f"Tool failures: {', '.join(failed_tools)}",
-                            importance=0.6,
-                        )
-
-                    # End session and promote important working memories
-                    self.memory_mgr.end_session(promote_important=True)
-
-                except Exception as mem_err:
-                    # Don't let memory errors break the main flow
-                    self._notify("memory_error", {"error": str(mem_err)})
-
+            self._finalize_run(task, state.data_collector)
         return f"Loop ended: {self.status} | Error: {self.error or 'none'}"
 
     def stop(self):
@@ -748,12 +582,9 @@ class CodexLoop:
     def get_status(self) -> Dict[str, Any]:
         duration = time.time() - self.start_time if self.start_time else 0
         return {
-            "status": self.status,
-            "task": self.current_task,
-            "iteration": self._iteration,
-            "total_tokens": self.total_tokens_used,
-            "duration_sec": int(duration),
-            "error": self.error,
+            "status": self.status, "task": self.current_task,
+            "iteration": self._iteration, "total_tokens": self.total_tokens_used,
+            "duration_sec": int(duration), "error": self.error,
             "session_id": self._current_session.id if self._current_session else None,
         }
 
@@ -776,9 +607,7 @@ def _estimate_cost(input_tok: int, output_tok: int, provider: str) -> float:
 # ─── Convenience Runner ──────────────────────────────────────────────────
 
 async def run_automated(task: str, **config_kwargs) -> str:
-    """
-    One-liner to run a task fully automatically.
-    """
+    """One-liner to run a task fully automatically."""
     config = LoopConfig(**config_kwargs)
     loop = CodexLoop(config)
     return await loop.run_task(task)
@@ -786,15 +615,29 @@ async def run_automated(task: str, **config_kwargs) -> str:
 
 # ─── Enhanced Codex Loop ──────────────────────────────────────────────────
 
+_REASONING_PROMPTS = {
+    1: "Analyze this task in detail. Consider:\n1. What exactly needs to be done?\n"
+       "2. What are the key components and requirements?\n3. What tools or resources are needed?\n"
+       "4. What are potential challenges?\n5. What is the best approach?\n\nTask: {task}\n\nProvide a detailed analysis.",
+    2: "Based on the analysis, create a detailed execution plan.\n\nPrevious Analysis:\n{context}\n\n"
+       "Task: {task}\n\nCreate a clear, actionable plan with:\n1. Specific steps in order\n"
+       "2. Tools needed for each step\n3. Expected outcomes\n4. Potential risks and mitigations",
+}
+
+
+def _get_reasoning_prompt(round_num: int, task: str, context: str) -> str:
+    """Get the reasoning prompt for a given round."""
+    if round_num in _REASONING_PROMPTS:
+        return _REASONING_PROMPTS[round_num].format(task=task, context=context)
+    return (f"Review the plan and refine the execution strategy.\n\nPrevious Analysis and Plan:\n{context}\n\n"
+            f"Task: {task}\n\nIdentify:\n1. Any gaps or missing steps\n2. Potential improvements\n"
+            f"3. Risk mitigation strategies\n4. Final execution strategy")
+
+
 class EnhancedCodexLoop(CodexLoop):
     """
     Enhanced CodexLoop with multi-round reasoning capabilities.
-
-    Features:
-    - Chain-of-Thought prompting
-    - Multi-round reasoning for complex tasks
-    - Better handling of ambiguous requirements
-    - Self-validation of approach before execution
+    Features: Chain-of-Thought prompting, multi-round reasoning, self-validation.
     """
 
     def __init__(self, config: Optional[LoopConfig] = None):
@@ -803,188 +646,79 @@ class EnhancedCodexLoop(CodexLoop):
 
     async def run_task(self, task: str, session_id: Optional[str] = None,
                        timeout_sec: Optional[float] = None) -> str:
-        """Run task with optional multi-round reasoning"""
-
+        """Run task with optional multi-round reasoning."""
         if not self.config.enable_multi_round_reasoning:
-            # Use standard loop
             return await super().run_task(task, session_id, timeout_sec)
-
-        # Phase 1: Multi-round reasoning
         self._notify("reasoning_start", {"task": task, "rounds": self.config.reasoning_rounds})
-
         reasoning_context = await self._multi_round_reason(task)
-
-        self._notify("reasoning_complete", {
-            "task": task,
-            "thoughts": len(self.reasoning_history),
-        })
-
-        # Phase 2: Execute with enhanced context
+        self._notify("reasoning_complete", {"task": task, "thoughts": len(self.reasoning_history)})
         enhanced_task = self._build_enhanced_task(task, reasoning_context)
-
-        # Use Chain-of-Thought system prompt if enabled
         original_prompt = self.config.system_prompt
         if self.config.chain_of_thought:
             self.config.system_prompt = CHAIN_OF_THOUGHT_PROMPT + "\n\n" + original_prompt
-
         try:
             result = await super().run_task(enhanced_task, session_id, timeout_sec)
         finally:
             self.config.system_prompt = original_prompt
-
         return result
 
     async def _multi_round_reason(self, task: str) -> str:
-        """Run multiple rounds of reasoning on the task"""
+        """Run multiple rounds of reasoning on the task."""
         self.reasoning_history = []
         context = ""
-
         for round_num in range(1, self.config.reasoning_rounds + 1):
             self._notify("reasoning_round", {"round": round_num, "total": self.config.reasoning_rounds})
-
-            # Build reasoning prompt
-            if round_num == 1:
-                prompt = f"""Analyze this task in detail. Consider:
-1. What exactly needs to be done?
-2. What are the key components and requirements?
-3. What tools or resources are needed?
-4. What are potential challenges?
-5. What is the best approach?
-
-Task: {task}
-
-Provide a detailed analysis."""
-
-            elif round_num == 2:
-                prompt = f"""Based on the analysis, create a detailed execution plan.
-
-Previous Analysis:
-{context}
-
-Task: {task}
-
-Create a clear, actionable plan with:
-1. Specific steps in order
-2. Tools needed for each step
-3. Expected outcomes
-4. Potential risks and mitigations"""
-
-            else:
-                prompt = f"""Review the plan and refine the execution strategy.
-
-Previous Analysis and Plan:
-{context}
-
-Task: {task}
-
-Identify:
-1. Any gaps or missing steps
-2. Potential improvements
-3. Risk mitigation strategies
-4. Final execution strategy"""
-
-            # Call LLM for reasoning
+            prompt = _get_reasoning_prompt(round_num, task, context)
             reasoning_result = await self._call_reasoning_llm(prompt)
-
-            self.reasoning_history.append({
-                "round": round_num,
-                "prompt": prompt[:200] + "...",
-                "result": reasoning_result,
-            })
-
+            self.reasoning_history.append({"round": round_num, "prompt": prompt[:200] + "...", "result": reasoning_result})
             context += f"\n\nRound {round_num}:\n{reasoning_result}"
-
         return context
 
     async def _call_reasoning_llm(self, prompt: str) -> str:
-        """Call LLM for reasoning (separate from tool execution)"""
+        """Call LLM for reasoning (separate from tool execution)."""
         messages = [
             {"role": "system", "content": "You are an expert problem solver. Think carefully and provide detailed analysis."},
             {"role": "user", "content": prompt},
         ]
-
-        # Use lower temperature for reasoning
-        config = LoopConfig(
-            temperature=self.config.reasoning_temperature,
-            max_output_tokens=self.config.max_output_tokens,
-            model=self.config.model,
-            provider=self.config.provider,
-        )
-
+        config = LoopConfig(temperature=self.config.reasoning_temperature,
+                            max_output_tokens=self.config.max_output_tokens,
+                            model=self.config.model, provider=self.config.provider)
         try:
-            response = await _call_llm_async(
-                messages, config,
-                os.environ.get("CODEX_API_KEY") or os.environ.get("DEEPSEEK_API_KEY") or "",
-                config.provider,
-                config.model,
-            )
-
-            # Extract text from response
+            response = await _call_llm_async(messages, config,
+                                              os.environ.get("CODEX_API_KEY") or os.environ.get("DEEPSEEK_API_KEY") or "",
+                                              config.provider, config.model)
             output = response.get("output", [])
-            text = next(
-                (c.get("text", "")
-                 for item in output
-                 if item.get("type") == "message"
-                 for c in item.get("content", [])
-                 if isinstance(c, dict) and c.get("type") == "output_text"),
-                None,
-            )
+            text = next((c.get("text", "") for item in output if item.get("type") == "message"
+                          for c in item.get("content", []) if isinstance(c, dict) and c.get("type") == "output_text"), None)
             return text if text is not None else "No reasoning output"
-
         except Exception as e:
             return f"Reasoning error: {str(e)}"
 
     def _build_enhanced_task(self, task: str, reasoning_context: str) -> str:
-        """Build enhanced task with reasoning context"""
-        return f"""Task: {task}
-
-Reasoning Context:
-{reasoning_context}
-
-Based on the above analysis and planning, execute this task. Use the tools available to complete each step."""
+        return (f"Task: {task}\n\nReasoning Context:\n{reasoning_context}\n\n"
+                f"Based on the above analysis and planning, execute this task. Use the tools available to complete each step.")
 
     def get_reasoning_history(self) -> List[Dict[str, str]]:
-        """Get the reasoning history"""
         return self.reasoning_history
 
 
 # ─── Quick Enhanced Runner ────────────────────────────────────────────────
 
 async def run_enhanced(task: str, reasoning_rounds: int = 3, **config_kwargs) -> str:
-    """
-    Run task with multi-round reasoning.
-
-    Args:
-        task: Task description
-        reasoning_rounds: Number of reasoning rounds (default: 3)
-        **config_kwargs: Additional LoopConfig arguments
-
-    Returns:
-        Task result
-    """
-    config = LoopConfig(
-        enable_multi_round_reasoning=True,
-        reasoning_rounds=reasoning_rounds,
-        chain_of_thought=True,
-        **config_kwargs,
-    )
+    """Run task with multi-round reasoning."""
+    config = LoopConfig(enable_multi_round_reasoning=True, reasoning_rounds=reasoning_rounds,
+                        chain_of_thought=True, **config_kwargs)
     loop = EnhancedCodexLoop(config)
     return await loop.run_task(task)
 
 
 if __name__ == "__main__":
     async def test():
-        # Test standard mode
         print("=== Standard Mode ===")
         result = await run_automated("Write a hello world Python file at D:/codex-local/test_hello.py")
         print(result)
-
-        # Test enhanced mode
         print("\n=== Enhanced Mode (Multi-Round Reasoning) ===")
-        result = await run_enhanced(
-            "Create a Python function that calculates fibonacci numbers with memoization",
-            reasoning_rounds=2,
-        )
+        result = await run_enhanced("Create a Python function that calculates fibonacci numbers with memoization", reasoning_rounds=2)
         print(result)
 
     asyncio.run(test())
