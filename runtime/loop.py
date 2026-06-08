@@ -400,6 +400,9 @@ class _CodexLoopHelpers:
         self.iteration_count = self._iteration
         self.status = f"iterating ({self._iteration})"
         self._notify("iteration", {"iteration": self._iteration, "session_id": state.session_id, "action": "calling_llm"})
+        # Enforce context window BEFORE calling LLM to prevent token overflow
+        # from accumulated tool results in previous iterations
+        state.messages = self._enforce_context_window(state.messages)
         response = await self._call_llm_with_fallback(state.messages, self._make_stream_cb())
         if response is None:
             return None

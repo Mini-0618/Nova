@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-06-09 05:07:48",
+  "total_tasks": 1,
+  "passed": 0,
+  "failed": 1,
+  "pass_rate": 0.0,
+  "by_category": {
+    "file_io": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "pass_rate": 0.0
+    }
+  },
+  "by_difficulty": {
+    "easy": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "pass_rate": 0.0
+    }
+  },
+  "tool_call_accuracy": 0,
+  "regression_rate": 0.0,
+  "false_change_rate": 0.0,
+  "human_intervention_rate": 0.0,
+  "avg_quality_score": 0.0,
+  "total_quality_issues": 0,
+  "results": [
+    {
+      "task_id": "E10",
+      "category": "file_io",
+      "difficulty": "easy",
+      "title": "Append to existing file",
+      "passed": false,
+      "score": 0,
+      "error": null,
+      "duration_s": 14.38,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "needed_human": false,
+      "introduced_regression": false,
+      "changed_wrong_files": false,
+      "patch_too_large": false,
+      "details": "expected 'NEW LINE' in data/eval/workspace/E10_append.txt, got: existing content",
+      "quality_score": 0.0,
+      "quality_issues": 0
+    }
+  ]
+}

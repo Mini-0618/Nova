@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-06-09 05:05:48",
+  "total_tasks": 1,
+  "passed": 0,
+  "failed": 1,
+  "pass_rate": 0.0,
+  "by_category": {
+    "file_io": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "pass_rate": 0.0
+    }
+  },
+  "by_difficulty": {
+    "medium": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "pass_rate": 0.0
+    }
+  },
+  "tool_call_accuracy": 0,
+  "regression_rate": 0.0,
+  "false_change_rate": 0.0,
+  "human_intervention_rate": 0.0,
+  "avg_quality_score": 0.0,
+  "total_quality_issues": 0,
+  "results": [
+    {
+      "task_id": "E08",
+      "category": "file_io",
+      "difficulty": "medium",
+      "title": "Search and replace across files",
+      "passed": false,
+      "score": 0,
+      "error": null,
+      "duration_s": 14.16,
+      "tools_used": [],
+      "tool_calls_total": 0,
+      "tool_calls_success": 0,
+      "needed_human": false,
+      "introduced_regression": false,
+      "changed_wrong_files": false,
+      "patch_too_large": false,
+      "details": "expected 'FIXED' in data/eval/workspace/E08_target.txt, got: line1\nERROR here\nline3",
+      "quality_score": 0.0,
+      "quality_issues": 0
+    }
+  ]
+}
