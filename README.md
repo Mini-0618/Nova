@@ -80,6 +80,16 @@ python NOVA.py --heartbeat
 
 ---
 
+## Repository Guide
+
+- **Run Nova** — Follow [Quick Start](#quick-start). The command-line entry point is [`cli.py`](cli.py).
+- **Explore the runtime** — Find the agent code in [`runtime/`](runtime/) and MCP integration in [`mcp/`](mcp/).
+- **Run evaluations and tests** — Find the benchmark runner and task definitions in [`data/eval/`](data/eval/) and the test suite in [`tests/`](tests/).
+- **Try the self-evolution prototype** — The [Self Evolve Project README](self_evolve_project/README.md) explains how to run its demo.
+- **Read the early design** — [`ARCHITECTURE.md`](ARCHITECTURE.md) records the original Codex-Local design.
+
+---
+
 ## The Numbers
 
 ```
